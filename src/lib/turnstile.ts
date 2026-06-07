@@ -1,5 +1,5 @@
 export async function verifyTurnstileToken(token: string): Promise<boolean> {
-  const secretKey = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAA_DUMMY_TURNSTILE_SECRET_KEY';
+  const secretKey = "0x4AAAAAA_DUMMY_TURNSTILE_SECRET_KEY";
   if (!secretKey) {
     console.warn('TURNSTILE_SECRET_KEY is not defined. Skipping verification in dev.');
     return true; // Bypass if not configured
