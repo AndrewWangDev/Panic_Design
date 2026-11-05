@@ -56,3 +56,8 @@ next-env.d.ts
 ec2.txt
 append-css*.js
 update-css.js
+
+# Local workspace and development overrides
+AGENTS.md
+CLAUDE.md
+.claude/
