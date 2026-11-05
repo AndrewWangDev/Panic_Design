@@ -1,0 +1,64 @@
+name: "Feature / RFC Proposal"
+description: "Suggest a new chaos injection capability, spatial algorithm enhancement, or architectural RFC"
+title: "[Feature / RFC]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement to **panic.design**! 
+        Please provide as much architectural detail as possible to help the community evaluate and design the feature.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Proposal Category
+      description: Select the primary category for this proposal.
+      options:
+        - "L4/L7 Chaos Fault Engine (New Degradation or Mutilation Strategy)"
+        - "LGPA Spatial Mathematics & Geodesic Calculation"
+        - "AIOps Deduction & Workers AI Prompt Engineering"
+        - "Edge Telemetry & OpenTelemetry Integration"
+        - "Console UI & Terminal Interactivity"
+        - "Developer Experience, CLI & SDK"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement & Motivation
+      description: Is your feature request related to a specific problem or real-world chaos engineering use case?
+      placeholder: "In modern distributed microservices, tail latency often follows a Pareto distribution rather than a uniform distribution..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution & Architecture
+      description: Describe the technical implementation you would like to see.
+      placeholder: |
+        - Extend `DistributionType` with `'pareto'`.
+        - Implement mathematical shape parameter alpha sampling in `src/lib/types.ts`.
+        - Add edge worker runtime support in Data Plane...
+    validations:
+      required: true
+
+  - type: textarea
+    id: edge_impact
+    attributes:
+      label: Edge Latency & Resource Consideration
+      description: How does this proposal ensure zero intrusion and maintain sub-millisecond edge processing overhead?
+      placeholder: "The sampling algorithm uses bitwise operations and Web Crypto, avoiding remote roundtrips..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives & Prior Art
+      description: Are there alternative approaches or existing solutions in other tools (e.g. Chaos Mesh, Gremlin, Toxiproxy)?
+      placeholder: "We considered client-side SDK injection, but edge proxy mutilation offers better zero-intrusion isolation..."
+    validations:
+      required: false
