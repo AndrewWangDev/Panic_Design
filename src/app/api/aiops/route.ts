@@ -18,10 +18,6 @@ export async function POST(req: Request) {
 
     const { instruction, baseline, turnstileToken } = await req.json();
 
-    if (instruction === 'DEBUG_PING') {
-      return NextResponse.json({ debug: true, hasAI: !!env.AI });
-    }
-
     // Turnstile Check
     if (process.env.NODE_ENV !== 'development' && !turnstileToken) {
       return NextResponse.json({ error: 'Security verification missing' }, { status: 403 });

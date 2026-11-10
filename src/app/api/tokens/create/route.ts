@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { getPrisma } from '@/lib/prisma';
 import { checkAndUpdateQuota, refundQuota } from '@/lib/quota';
 import { SignJWT } from 'jose';
-import { isPrivateIp, isValidTargetHost } from '@/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost } from '@/lib/security';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export async function POST(req: Request) {
@@ -193,15 +193,21 @@ export async function POST(req: Request) {
     // Resolve W3 (Target Host) coordinates using Edge-compatible fetch with timeout
     let w3: [number, number] | undefined = undefined;
     try {
-      const dnsRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(cleanHost)}&type=A`, {
-        headers: { 'accept': 'application/dns-json' },
-        signal: AbortSignal.timeout(3000)
-      });
-      const dnsData = await dnsRes.json() as any;
-      
+      const parsed = parseTargetHost(cleanHost);
+      const hostForDns = parsed ? parsed.hostname : cleanHost;
       let address = '';
-      if (dnsData.Status === 0 && dnsData.Answer && dnsData.Answer.length > 0) {
-        address = dnsData.Answer.find((a: any) => a.type === 1)?.data || dnsData.Answer[0].data;
+
+      if (parsed && parsed.isIp) {
+        address = parsed.hostname;
+      } else {
+        const dnsRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostForDns)}&type=A`, {
+          headers: { 'accept': 'application/dns-json' },
+          signal: AbortSignal.timeout(3000)
+        });
+        const dnsData = await dnsRes.json() as any;
+        if (dnsData.Status === 0 && dnsData.Answer && dnsData.Answer.length > 0) {
+          address = dnsData.Answer.find((a: any) => a.type === 1)?.data || dnsData.Answer[0].data;
+        }
       }
       
       if (address) {

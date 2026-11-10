@@ -4,12 +4,14 @@ import { checkAndUpdateQuota, refundQuota } from '../src/lib/quota';
 // Mock Prisma
 const mockFindUnique = vi.fn();
 const mockUpdateMany = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock('../src/lib/prisma', () => ({
   getPrisma: () => ({
     user: {
       findUnique: mockFindUnique,
-      updateMany: mockUpdateMany
+      updateMany: mockUpdateMany,
+      update: mockUpdate
     }
   })
 }));
@@ -129,23 +131,46 @@ describe('Quota Engine: Core Logic & Concurrency Control', () => {
     expect(mockUpdateMany).toHaveBeenCalledTimes(2);
   });
 
-  it('refundQuota should atomically decrement daily and hourly quota', async () => {
-    mockUpdateMany.mockResolvedValue({ count: 1 });
+  it('refundQuota should decrement daily and hourly quota when both > 0', async () => {
+    mockFindUnique.mockResolvedValue({
+      id: 'user-1',
+      dailyQuota: 5,
+      hourlyQuota: 2
+    });
+    mockUpdate.mockResolvedValue({});
 
     await refundQuota('user-1');
 
-    expect(mockUpdateMany).toHaveBeenCalledTimes(1);
-    expect(mockUpdateMany).toHaveBeenCalledWith(
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          id: 'user-1',
-          dailyQuota: { gt: 0 },
-          hourlyQuota: { gt: 0 }
-        }),
-        data: expect.objectContaining({
-          dailyQuota: { decrement: 1 },
-          hourlyQuota: { decrement: 1 }
-        })
+        where: { id: 'user-1' },
+        data: {
+          dailyQuota: 4,
+          hourlyQuota: 1
+        }
+      })
+    );
+  });
+
+  it('refundQuota should safely refund daily quota even when hourly quota is 0 (crossing window)', async () => {
+    mockFindUnique.mockResolvedValue({
+      id: 'user-1',
+      dailyQuota: 5,
+      hourlyQuota: 0
+    });
+    mockUpdate.mockResolvedValue({});
+
+    await refundQuota('user-1');
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-1' },
+        data: {
+          dailyQuota: 4,
+          hourlyQuota: 0
+        }
       })
     );
   });

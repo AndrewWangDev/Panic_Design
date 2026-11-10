@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPrivateIp, isValidTargetHost } from '../src/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost } from '../src/lib/security';
 
 describe('Security: isPrivateIp (SSRF defense)', () => {
   it('should identify IPv4 loopback & RFC1918 private ranges as private', () => {
@@ -121,5 +121,65 @@ describe('Security: isValidTargetHost', () => {
     expect(isValidTargetHost('[2606:4700:4700::1111]@evil.com')).toBe(false);
     expect(isValidTargetHost('[2606:4700:4700::1111]:999999')).toBe(false);
     expect(isValidTargetHost('[2606:4700:4700::1111]:0')).toBe(false);
+  });
+});
+
+describe('Security: parseTargetHost', () => {
+  it('should parse standard domain with and without port', () => {
+    expect(parseTargetHost('example.com')).toEqual({
+      hostname: 'example.com',
+      port: '',
+      isIpv6: false,
+      isIp: false
+    });
+    expect(parseTargetHost('api.example.com:8080')).toEqual({
+      hostname: 'api.example.com',
+      port: '8080',
+      isIpv6: false,
+      isIp: false
+    });
+  });
+
+  it('should parse IPv4 with and without port', () => {
+    expect(parseTargetHost('8.8.8.8')).toEqual({
+      hostname: '8.8.8.8',
+      port: '',
+      isIpv6: false,
+      isIp: true
+    });
+    expect(parseTargetHost('1.1.1.1:443')).toEqual({
+      hostname: '1.1.1.1',
+      port: '443',
+      isIpv6: false,
+      isIp: true
+    });
+  });
+
+  it('should parse bracketed and bare IPv6 addresses', () => {
+    expect(parseTargetHost('[2606:4700:4700::1111]')).toEqual({
+      hostname: '2606:4700:4700::1111',
+      port: '',
+      isIpv6: true,
+      isIp: true
+    });
+    expect(parseTargetHost('[2606:4700:4700::1111]:8443')).toEqual({
+      hostname: '2606:4700:4700::1111',
+      port: '8443',
+      isIpv6: true,
+      isIp: true
+    });
+    expect(parseTargetHost('2606:4700:4700::1111')).toEqual({
+      hostname: '2606:4700:4700::1111',
+      port: '',
+      isIpv6: true,
+      isIp: true
+    });
+  });
+
+  it('should reject invalid or malicious host structures', () => {
+    expect(parseTargetHost('')).toBeNull();
+    expect(parseTargetHost('http://example.com')).toBeNull();
+    expect(parseTargetHost('example.com/path')).toBeNull();
+    expect(parseTargetHost('user@example.com')).toBeNull();
   });
 });
