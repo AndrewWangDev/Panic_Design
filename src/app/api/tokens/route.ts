@@ -23,7 +23,7 @@ export async function GET() {
       let isExpired = false;
       try {
         const config = JSON.parse(t.config);
-        const ttlHours = parseFloat(config.ttlHours) || 0.25;
+        const ttlHours = parseFloat(config.ttlHours || config.ttl) || 0.25;
         const expiresAt = t.createdAt.getTime() + ttlHours * 60 * 60 * 1000;
         isExpired = expiresAt <= now;
       } catch {

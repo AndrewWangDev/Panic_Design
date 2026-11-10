@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { isPrivateIp } from '@/lib/security';
+import { isPrivateIp, parseTargetHost } from '@/lib/security';
 import { jwtVerify } from 'jose';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
-async function resolveHostIp(hostname: string): Promise<string | null> {
+async function resolveHostIp(rawHost: string): Promise<string | null> {
   try {
+    const parsed = parseTargetHost(rawHost);
+    if (parsed?.isIp) {
+      return parsed.hostname;
+    }
+    const hostname = parsed ? parsed.hostname : rawHost;
     const dnsRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`, {
       headers: { 'accept': 'application/dns-json' },
       signal: AbortSignal.timeout(3000)

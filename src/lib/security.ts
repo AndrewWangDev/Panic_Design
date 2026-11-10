@@ -187,6 +187,43 @@ function isValidIpv6(ip: string): boolean {
   return true;
 }
 
+export interface ParsedHost {
+  hostname: string;
+  port: string;
+  isIpv6: boolean;
+  isIp: boolean;
+}
+
+/**
+ * Parses raw host string into normalized hostname, port, and network type.
+ * Handles bracketed IPv6 ([2606::1]:8080), bare IPv6 (2606::1), and host:port (example.com:80).
+ */
+export function parseTargetHost(rawHost: string): ParsedHost | null {
+  if (!rawHost || typeof rawHost !== 'string') return null;
+  const host = rawHost.trim().toLowerCase();
+  if (/[/?#@\\]/.test(host)) return null;
+
+  // 1. Bracketed IPv6: [2606::1]:8080 or [2606::1]
+  if (host.startsWith('[')) {
+    const match = host.match(/^\[([0-9a-f:]+)\](?::(\d{1,5}))?$/);
+    if (!match) return null;
+    return { hostname: match[1], port: match[2] || '', isIpv6: true, isIp: true };
+  }
+
+  // 2. Host with port (standard domain or IPv4)
+  if (host.includes(':')) {
+    const parts = host.split(':');
+    if (parts.length === 2 && !host.includes('::')) {
+      return { hostname: parts[0], port: parts[1], isIpv6: false, isIp: /^[0-9.]+$/.test(parts[0]) };
+    }
+    // 3. Bare IPv6
+    return { hostname: host, port: '', isIpv6: true, isIp: true };
+  }
+
+  // 4. Standard domain or IPv4
+  return { hostname: host, port: '', isIpv6: false, isIp: /^[0-9.]+$/.test(host) };
+}
+
 /**
  * Validates a target host string to prevent SSRF, internal network scanning,
  * and command/protocol injection. Supports FQDNs, public IPv4, and public IPv6.
