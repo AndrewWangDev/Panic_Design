@@ -1,28 +1,16 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { isPrivateIp, parseTargetHost } from '@/lib/security';
+import { isPrivateIp, resolveHostIps } from '@/lib/security';
 import { jwtVerify } from 'jose';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 async function resolveHostIp(rawHost: string): Promise<string | null> {
-  try {
-    const parsed = parseTargetHost(rawHost);
-    if (parsed?.isIp) {
-      return parsed.hostname;
-    }
-    const hostname = parsed ? parsed.hostname : rawHost;
-    const dnsRes = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`, {
-      headers: { 'accept': 'application/dns-json' },
-      signal: AbortSignal.timeout(3000)
-    });
-    const dnsData = await dnsRes.json() as { Status?: number; Answer?: Array<{ type: number; data: string }> };
-    if (dnsData.Status === 0 && dnsData.Answer && dnsData.Answer.length > 0) {
-      return dnsData.Answer.find(a => a.type === 1)?.data || dnsData.Answer[0].data;
-    }
-  } catch (err) {
-    console.warn('DoH resolution error:', err);
+  const { ips, primaryIp } = await resolveHostIps(rawHost);
+  const blockedIp = ips.find((ip) => isPrivateIp(ip));
+  if (blockedIp) {
+    return blockedIp;
   }
-  return null;
+  return primaryIp;
 }
 
 export async function POST(req: Request) {
@@ -94,9 +82,10 @@ export async function POST(req: Request) {
       responseBody = await res.text();
       resHeaders = res.headers;
     } catch (e: any) {
+      console.error('Data Plane probe failed:', e);
       status = 503;
       statusText = 'Service Unavailable (Data Plane offline)';
-      responseBody = e.message;
+      responseBody = 'Upstream data plane unreachable or timed out.';
     }
     
     const t1_total = Date.now() - startTime;

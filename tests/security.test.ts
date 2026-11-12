@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { isPrivateIp, isValidTargetHost, parseTargetHost } from '../src/lib/security';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps } from '../src/lib/security';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('Security: isPrivateIp (SSRF defense)', () => {
   it('should identify IPv4 loopback & RFC1918 private ranges as private', () => {
@@ -181,5 +185,46 @@ describe('Security: parseTargetHost', () => {
     expect(parseTargetHost('http://example.com')).toBeNull();
     expect(parseTargetHost('example.com/path')).toBeNull();
     expect(parseTargetHost('user@example.com')).toBeNull();
+  });
+
+  it('should reject hex/octal/integer SSRF host forms and numeric/hex TLD labels', () => {
+    expect(isValidTargetHost('0x7f.0.0.1')).toBe(false);
+    expect(isValidTargetHost('0177.0.0.1')).toBe(false);
+    expect(isValidTargetHost('2130706433')).toBe(false);
+    expect(isValidTargetHost('example.123')).toBe(false);
+    expect(isValidTargetHost('example.0x1')).toBe(false);
+  });
+});
+
+describe('Security: resolveHostIps (A + AAAA)', () => {
+  it('should return bare IP directly without DoH lookup', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await resolveHostIps('1.1.1.1:443');
+    expect(res).toEqual({ ips: ['1.1.1.1'], primaryIp: '1.1.1.1' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should query both A and AAAA DoH records concurrently', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('type=A&') || url.endsWith('type=A')) {
+        return {
+          ok: true,
+          json: async () => ({ Status: 0, Answer: [{ type: 1, data: '104.21.5.19' }] }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ Status: 0, Answer: [{ type: 28, data: 'fc00::1' }] }),
+      } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await resolveHostIps('dualstack.example.com');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(res.ips).toContain('104.21.5.19');
+    expect(res.ips).toContain('fc00::1');
+    expect(res.ips.some((ip) => isPrivateIp(ip))).toBe(true);
+    expect(res.primaryIp).toBe('104.21.5.19');
   });
 });

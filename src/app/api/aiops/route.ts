@@ -16,15 +16,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cloudflare AI environment not found' }, { status: 500 });
     }
 
-    const { instruction, baseline, turnstileToken } = await req.json();
+    let body: { instruction?: unknown; baseline?: unknown; turnstileToken?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    }
+
+    const { instruction, baseline, turnstileToken } = body ?? {};
+    if (typeof instruction !== 'string' || instruction.trim().length === 0 || instruction.length > 2000) {
+      return NextResponse.json({
+        error_code: 'INVALID_INPUT',
+        error_message: 'Instruction must be a non-empty string under 2000 characters.',
+        warning_code: null,
+        warning_message: null,
+        map_data: null,
+        insight: null
+      }, { status: 400 });
+    }
+
+    const baselineJson = JSON.stringify(baseline ?? {});
+    if (baselineJson.length > 8192) {
+      return NextResponse.json({
+        error_code: 'INVALID_INPUT',
+        error_message: 'Baseline telemetry payload is too large.',
+        warning_code: null,
+        warning_message: null,
+        map_data: null,
+        insight: null
+      }, { status: 400 });
+    }
 
     // Turnstile Check
-    if (process.env.NODE_ENV !== 'development' && !turnstileToken) {
+    const cleanTurnstileToken = typeof turnstileToken === 'string' ? turnstileToken : '';
+    if (process.env.NODE_ENV !== 'development' && !cleanTurnstileToken) {
       return NextResponse.json({ error: 'Security verification missing' }, { status: 403 });
     }
-    if (turnstileToken) {
+    if (cleanTurnstileToken) {
       const { verifyTurnstileToken } = await import('@/lib/turnstile');
-      const isValid = await verifyTurnstileToken(turnstileToken);
+      const isValid = await verifyTurnstileToken(cleanTurnstileToken);
       if (!isValid) return NextResponse.json({ error: 'Security verification failed' }, { status: 403 });
     }
 

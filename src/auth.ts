@@ -46,7 +46,7 @@ function getAuthInstance() {
         });
 
         if (!existingUser) {
-          const totalUsers = await prisma.user.count();
+          const totalUsers = await prisma.user.count({ where: { githubId: { not: null } } });
           if (totalUsers >= 100) {
             return "/?error=EnrollmentFull";
           }
