@@ -300,8 +300,8 @@ export function isValidTargetHost(rawHost: string): boolean {
     return isValidIpv6(host);
   }
 
-  // 7. Check IPv4 address
-  if (/^[0-9.]+$/.test(host)) {
+  // 7. Check IPv4 / obfuscated numeric IP addresses (standard, octal, hex)
+  if (/^[0-9.]+$/.test(host) || /^0x[0-9a-f.]+$/i.test(host)) {
     const octets = host.split('.');
     if (octets.length !== 4) return false;
     if (octets.some(o => o.length === 0 || isNaN(Number(o)) || Number(o) < 0 || Number(o) > 255)) {
@@ -317,6 +317,8 @@ export function isValidTargetHost(rawHost: string): boolean {
   // Labels must be separated by dots
   const labels = host.split('.');
   if (labels.some(label => label.length === 0 || label.length > 63)) return false;
+  // TLD cannot be pure numeric or hex octet (prevents numeric IPv4 disguise fallback)
+  if (/^(\d+|0x[0-9a-f]+)$/i.test(labels[labels.length - 1])) return false;
 
   // Validate each label
   for (const label of labels) {
@@ -326,4 +328,45 @@ export function isValidTargetHost(rawHost: string): boolean {
   }
 
   return true;
+}
+
+/**
+ * Resolves all IPv4 (A) and IPv6 (AAAA) addresses for a target host via Cloudflare DoH.
+ * If the host is already a raw IP literal, returns it directly without network DNS lookup.
+ */
+export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; primaryIp: string | null }> {
+  const parsed = parseTargetHost(rawHost);
+  if (!parsed) return { ips: [], primaryIp: null };
+
+  if (parsed.isIp) {
+    return { ips: [parsed.hostname], primaryIp: parsed.hostname };
+  }
+
+  const queryDns = async (qtype: 'A' | 'AAAA'): Promise<string[]> => {
+    try {
+      const dnsRes = await fetch(
+        `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(parsed.hostname)}&type=${qtype}`,
+        {
+          headers: { accept: 'application/dns-json' },
+          signal: AbortSignal.timeout(3000)
+        }
+      );
+      const dnsData = (await dnsRes.json()) as {
+        Status?: number;
+        Answer?: Array<{ type: number; data: string }>;
+      };
+      if (dnsData.Status === 0 && Array.isArray(dnsData.Answer)) {
+        const expectedType = qtype === 'A' ? 1 : 28;
+        return dnsData.Answer.filter(a => a.type === expectedType && typeof a.data === 'string').map(a => a.data);
+      }
+    } catch (err) {
+      console.warn(`DoH ${qtype} resolution error:`, err);
+    }
+    return [];
+  };
+
+  const [v4List, v6List] = await Promise.all([queryDns('A'), queryDns('AAAA')]);
+  const ips = [...v4List, ...v6List];
+  const primaryIp = v4List[0] || v6List[0] || null;
+  return { ips, primaryIp };
 }
