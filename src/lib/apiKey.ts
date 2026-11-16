@@ -43,8 +43,11 @@ export async function authenticateApiKey(authHeaderOrKey: string | null): Promis
   const hash = await hashApiKey(rawKey);
   const prisma = getPrisma();
 
-  const user = await prisma.user.findUnique({
-    where: { apiKeyHash: hash },
+  const user = await prisma.user.findFirst({
+    where: {
+      apiKeyHash: hash,
+      githubId: { not: null }
+    },
     select: { id: true, username: true, email: true }
   });
 

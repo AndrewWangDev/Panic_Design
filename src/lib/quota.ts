@@ -95,30 +95,32 @@ export async function checkAndUpdateQuota(userId: string): Promise<{ allowed: bo
 
 /**
  * Atomically refunds 1 request to user daily/hourly quota in case downstream
- * Token creation fails or is aborted. Decouples daily and hourly decrement so
- * crossing hour windows does not block daily refund.
+ * Token creation fails or is aborted. Uses atomic conditional decrement to
+ * prevent lost updates during concurrent requests. Decouples daily and hourly
+ * decrement so crossing hour windows does not block daily refund.
  */
 export async function refundQuota(userId: string): Promise<void> {
   const prisma = getPrisma();
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { dailyQuota: true, hourlyQuota: true }
+    await prisma.user.updateMany({
+      where: {
+        id: userId,
+        dailyQuota: { gt: 0 }
+      },
+      data: {
+        dailyQuota: { decrement: 1 }
+      }
     });
-    if (!user) return;
 
-    const newDaily = Math.max(0, user.dailyQuota - 1);
-    const newHourly = Math.max(0, user.hourlyQuota - 1);
-
-    if (newDaily !== user.dailyQuota || newHourly !== user.hourlyQuota) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          dailyQuota: newDaily,
-          hourlyQuota: newHourly
-        }
-      });
-    }
+    await prisma.user.updateMany({
+      where: {
+        id: userId,
+        hourlyQuota: { gt: 0 }
+      },
+      data: {
+        hourlyQuota: { decrement: 1 }
+      }
+    });
   } catch (err) {
     console.error('Failed to refund quota for user:', userId, err);
   }

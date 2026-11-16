@@ -223,13 +223,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Cloudflare signing secret
+    // Cloudflare signing secret (support separate CHAOS_JWT_SECRET with AUTH_SECRET fallback)
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
+    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
       if (quotaDeducted && userId) await refundQuota(userId);
-      console.error('Missing AUTH_SECRET in environment');
-      return NextResponse.json({ error: 'Server misconfiguration: missing AUTH_SECRET' }, { status: 500 });
+      console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
+      return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }
 
     const configStr = JSON.stringify({
@@ -243,15 +243,13 @@ export async function POST(req: Request) {
       ttlHours
     });
 
-    const tokenHint = `${cleanHost.slice(0, 16)}...`;
-
     // Persist Token to D1
     const token = await prisma.token.create({
       data: {
         userId: user.id,
         targetHost: cleanHost,
         config: configStr,
-        tokenHint,
+        tokenHint: '',
         issuedWithSalt: userRecord.jwtSalt,
         isRevoked: false
       }
@@ -272,7 +270,6 @@ export async function POST(req: Request) {
       packetLoss,
       mutilationStrategy,
       ttlHours,
-      tokenHint,
       source: 'AGENT_API',
       userId: user.id,
       issuedWithSalt: userRecord.jwtSalt
@@ -281,6 +278,13 @@ export async function POST(req: Request) {
       .setIssuedAt()
       .setExpirationTime(`${expSeconds}s`)
       .sign(secret);
+
+    // Compute authentic JWT tokenHint matching Web UI convention
+    const tokenHint = `eyJhbGci...${jwtToken.slice(-4)}`;
+    await prisma.token.update({
+      where: { id: token.id },
+      data: { tokenHint }
+    });
 
     // Record Audit Log (Token Minted via Agent)
     const rayHeader = req.headers.get('cf-ray') || '';
@@ -305,7 +309,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       tokenId: token.id,
-      tokenHint: token.tokenHint,
+      tokenHint,
       jwtToken,
       gatewayUrl: 'https://gateway.andrewwangdev.com',
       expiresAt: new Date(Date.now() + ttlHours * 3600 * 1000).toISOString(),

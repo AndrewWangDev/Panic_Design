@@ -50,6 +50,7 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     mockTokenFindMany.mockResolvedValue([]);
     mockUserFindUnique.mockResolvedValue({ jwtSalt: 0 });
     mockChaosLogCreate.mockResolvedValue({});
+    mockTokenUpdate.mockResolvedValue({});
     mockTokenCreate.mockImplementation(async ({ data }: any) => ({
       id: 'token_agent_999',
       tokenHint: data.tokenHint,

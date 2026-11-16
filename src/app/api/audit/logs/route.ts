@@ -127,7 +127,11 @@ export async function GET(req: Request) {
         // Clean tokenHint to always be an authentic JWT hint
         let cleanTokenHint = l.tokenHint;
         if (cleanTokenHint && !cleanTokenHint.startsWith('eyJ')) {
-          cleanTokenHint = `eyJhbGci...${cleanTokenHint.replace(/\.+$/, '').slice(-4)}`;
+          if (l.tokenId) {
+            cleanTokenHint = `eyJhbGci...${l.tokenId.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
+          } else {
+            cleanTokenHint = `eyJhbGci...${cleanTokenHint.replace(/[^a-zA-Z0-9]/g, '').slice(-4) || 'edge'}`;
+          }
         }
 
         // Construct complete Fault Policy

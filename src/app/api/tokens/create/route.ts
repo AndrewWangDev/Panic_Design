@@ -87,10 +87,10 @@ export async function POST(req: Request) {
 
     // Pre-check signing secret before deducting quota or writing to DB
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
+    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
-      console.error('Missing AUTH_SECRET in environment');
-      return NextResponse.json({ error: 'Server misconfiguration: missing AUTH_SECRET' }, { status: 500 });
+      console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
+      return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }
 
     // Pre-flight DNS (A + AAAA) SSRF check before quota deduction or token creation

@@ -52,20 +52,42 @@ function getAuthInstance() {
           }
         }
 
-        await prisma.user.upsert({
-          where: { githubId },
-          update: {
-            username: login,
-            email: user.email,
-            avatarUrl: user.image,
-          },
-          create: {
-            githubId,
-            username: login,
-            email: user.email,
-            avatarUrl: user.image,
+        try {
+          await prisma.user.upsert({
+            where: { githubId },
+            update: {
+              username: login,
+              email: user.email,
+              avatarUrl: user.image,
+            },
+            create: {
+              githubId,
+              username: login,
+              email: user.email,
+              avatarUrl: user.image,
+            }
+          });
+        } catch (upsertErr: any) {
+          // Gracefully handle P2002 email unique constraint collision without failing login
+          if (upsertErr?.code === 'P2002' || String(upsertErr?.message || '').includes('Unique constraint')) {
+            console.warn('[NextAuth] Email unique constraint collision in signIn upsert, falling back safely:', upsertErr);
+            await prisma.user.upsert({
+              where: { githubId },
+              update: {
+                username: login,
+                avatarUrl: user.image,
+              },
+              create: {
+                githubId,
+                username: login,
+                email: user.email ? `gh_${githubId}_${user.email}` : null,
+                avatarUrl: user.image,
+              }
+            });
+          } else {
+            throw upsertErr;
           }
-        });
+        }
         return true;
       }
       return true;
