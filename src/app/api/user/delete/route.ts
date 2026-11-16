@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     
     const fakeHash = crypto.randomUUID();
     
-    // Unbind Github, scramble data, and increment jwtSalt for global revocation
+    // Unbind Github, scramble data, revoke API keys, and increment jwtSalt for global revocation
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -23,7 +23,10 @@ export async function POST(req: Request) {
         username: 'Deleted User',
         email: `deleted_${fakeHash}@panic.design`,
         avatarUrl: null,
-        jwtSalt: { increment: 1 }
+        jwtSalt: { increment: 1 },
+        apiKeyHash: null,
+        apiKeyPrefix: null,
+        apiKeyCreatedAt: null
       }
     });
 

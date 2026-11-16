@@ -6,7 +6,8 @@ const mockFindUnique = vi.fn();
 vi.mock('@/lib/prisma', () => ({
   getPrisma: () => ({
     user: {
-      findUnique: mockFindUnique
+      findUnique: mockFindUnique,
+      findFirst: mockFindUnique
     }
   })
 }));
@@ -61,7 +62,10 @@ describe('Developer API Key System', () => {
     expect(user).not.toBeNull();
     expect(user?.id).toBe('user_dev_123');
     expect(mockFindUnique).toHaveBeenCalledWith({
-      where: { apiKeyHash: expectedHash },
+      where: {
+        apiKeyHash: expectedHash,
+        githubId: { not: null }
+      },
       select: { id: true, username: true, email: true }
     });
   });
