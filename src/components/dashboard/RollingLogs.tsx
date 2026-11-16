@@ -7,6 +7,7 @@ import styles from '@/app/dashboard/dashboard.module.css';
 const FABRIC_TELEMETRY_MSGS = [
   "[ANYCAST] Routing optimization verified. Active edge PoPs: 285+ locations.",
   "[HEARTBEAT] Node SJC (San Jose): 8ms latency, Cloudflare D1 Primary OK.",
+  "[HEARTBEAT] Node LAX (Los Angeles): 11ms latency, Edge Cluster Active.",
   "[HEARTBEAT] Node FRA (Frankfurt): 14ms latency, Edge Replica in-sync.",
   "[HEARTBEAT] Node NRT (Tokyo): 26ms latency, Regional Mesh OK.",
   "[FABRIC] Zero-trust TLS session validated with edge proxy gateway.",
@@ -55,18 +56,22 @@ function formatAuditTime(isoStr?: string): string {
 
 function formatAuditItemToText(item: AuditLogItem): { text: string; prefixColor: string } {
   const timeStr = formatAuditTime(item.executedAt);
-  const colo = item.edgeColo && item.edgeColo !== 'UNKNOWN' && item.edgeColo !== 'ANYCAST'
+  const colo = item.edgeColo && item.edgeColo !== 'UNKNOWN' && item.edgeColo !== 'ANYCAST' && item.edgeColo !== 'GLOBAL-EDGE'
     ? item.edgeColo
-    : (item.rayId && item.rayId.includes('-') ? item.rayId.split('-')[1]?.toUpperCase() : 'GLOBAL-EDGE');
+    : (item.rayId && item.rayId.includes('-') ? item.rayId.split('-')[1]?.toUpperCase() : 'EDGE');
 
   const srcTag = item.source === 'AGENT_API' ? '[AGENT]' : item.source === 'WEB_DASHBOARD' ? '[WEB]' : '[EDGE]';
 
-  let target = item.targetUrl || 'target';
-  try {
-    if (target.startsWith('http://') || target.startsWith('https://')) {
-      target = new URL(target).hostname;
-    }
-  } catch {}
+  let target = item.targetUrl || '';
+  if (!target || target === 'target' || target === 'https://target') {
+    target = 'jsonplaceholder.typicode.com';
+  } else {
+    try {
+      if (target.startsWith('http://') || target.startsWith('https://')) {
+        target = new URL(target).hostname;
+      }
+    } catch {}
+  }
 
   let faultDesc = item.injectedFault;
   let prefixColor = '#38bdf8';
@@ -88,12 +93,18 @@ function formatAuditItemToText(item: AuditLogItem): { text: string; prefixColor:
     faultDesc = 'Token Revoked';
     prefixColor = '#94a3b8';
   } else if (item.injectedFault === 'latency' || policy?.fault === 'latency') {
-    const lat = policy?.latency ?? item.latencyMs ?? 0;
+    const lat = policy?.latency ?? item.latencyMs;
     const jit = policy?.jitter ?? 0;
     const drop = policy?.packetLoss ?? 0;
     const mut = policy?.mutilationStrategy && policy.mutilationStrategy !== 'None' ? `[${policy.mutilationStrategy}]` : '';
 
-    faultDesc = `+${lat}ms Latency${jit > 0 ? ` (±${jit}ms)` : ''}${drop > 0 ? ` [Drop: ${drop}%]` : ''}${mut ? ` ${mut}` : ''}`;
+    if (typeof lat === 'number' && lat > 0) {
+      faultDesc = `+${lat}ms Latency${jit > 0 ? ` (±${jit}ms)` : ''}${drop > 0 ? ` [Drop: ${drop}%]` : ''}${mut ? ` ${mut}` : ''}`;
+    } else if (drop > 0) {
+      faultDesc = `Packet Drop [${drop}%]${mut ? ` ${mut}` : ''}`;
+    } else {
+      faultDesc = `Normal Ingress${mut ? ` ${mut}` : ''}`;
+    }
     prefixColor = '#06b6d4';
   }
 
@@ -112,11 +123,11 @@ export const RollingLogs = () => {
   const knownLogIdsRef = useRef<Set<string>>(new Set());
   const pendingLogsRef = useRef<AuditLogItem[]>([]);
   const fabricIndexRef = useRef(0);
+  const isInitialFetchRef = useRef(true);
 
-  // Initial populate
+  // Initial populate for guest
   useEffect(() => {
     if (!isLoggedIn) {
-      // Guest demo stream
       const initial = FABRIC_TELEMETRY_MSGS.slice(0, 5).map((text, i) => ({
         key: `guest-init-${i}`,
         text,
@@ -144,12 +155,36 @@ export const RollingLogs = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
 
       try {
-        const res = await fetch('/api/audit/logs?limit=12');
+        const res = await fetch('/api/audit/logs?limit=8');
         if (!res.ok) return;
         const data = await res.json() as { success: boolean; logs: AuditLogItem[] };
         if (!isMounted || !data.success || !Array.isArray(data.logs)) return;
 
-        // Queue newly seen logs
+        if (isInitialFetchRef.current) {
+          isInitialFetchRef.current = false;
+          // Mark all initially loaded logs as known so we don't replay them one by one
+          knownLogIdsRef.current = new Set(data.logs.map(l => l.id));
+
+          if (data.logs.length > 0) {
+            // Render latest logs immediately on the screen
+            const userName = session?.user?.name || (session?.user as any)?.username || 'Developer';
+            const recentLines = data.logs.slice(0, 6).reverse().map(item => {
+              const formatted = formatAuditItemToText(item);
+              return {
+                key: `init-real-${item.id}`,
+                text: formatted.text,
+                prefixColor: formatted.prefixColor
+              };
+            });
+            setStream([
+              { key: 'init-0', text: `[${formatAuditTime()}] [SYSTEM] Connected as @${userName} to Cloudflare D1 stream.`, prefixColor: '#10b981' },
+              ...recentLines
+            ]);
+          }
+          return;
+        }
+
+        // Subsequent polls: Queue only newly arrived logs
         const newItems: AuditLogItem[] = [];
         for (const log of data.logs) {
           if (!knownLogIdsRef.current.has(log.id)) {
@@ -168,7 +203,7 @@ export const RollingLogs = () => {
     };
 
     fetchAuditLogs();
-    const pollTimer = setInterval(fetchAuditLogs, 5000);
+    const pollTimer = setInterval(fetchAuditLogs, 4000);
 
     const handleVisibilityChange = () => {
       if (!document.hidden) {
@@ -182,7 +217,7 @@ export const RollingLogs = () => {
       clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, session]);
 
   // Smooth rolling ticker loop (Runs for both Guest & Authenticated)
   useEffect(() => {
