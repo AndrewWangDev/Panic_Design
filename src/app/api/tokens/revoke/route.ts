@@ -34,6 +34,25 @@ export async function POST(req: Request) {
       data: { isRevoked: true }
     });
 
+    // Record Audit Log (Token Revocation via Web Dashboard)
+    const rayHeader = req.headers.get('cf-ray') || '';
+    const rayColo = rayHeader.includes('-') ? rayHeader.split('-')[1]?.toUpperCase() : null;
+    const colo = rayColo || req.headers.get('cf-ipcountry') || 'EDGE';
+
+    await prisma.chaosLog.create({
+      data: {
+        userId: session.user.id,
+        targetUrl: token.targetHost,
+        injectedFault: 'TOKEN_REVOKED',
+        source: 'WEB_DASHBOARD',
+        tokenId: token.id,
+        tokenHint: token.tokenHint,
+        edgeColo: colo,
+        statusCode: 200,
+        rayId: rayHeader || undefined
+      }
+    }).catch(err => console.error('Failed to log web revocation audit:', err));
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Revoke Token Error:', error);

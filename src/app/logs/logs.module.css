@@ -138,31 +138,127 @@
   margin-bottom: 24px;
 }
 
-.searchInput {
+.searchContainer {
+  position: relative;
   flex: 1;
-  min-width: 200px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 12px;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+}
+
+.searchIconWrapper {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  color: var(--text-secondary, #94a3b8);
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 100px;
+  padding: 8px 36px 8px 34px;
   color: #fff;
   font-size: 13px;
+  font-family: var(--font-sans);
   outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .searchInput:focus {
   border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
-.selectInput {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: #fff;
-  font-size: 13px;
-  outline: none;
+.clearSearchBtn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
   cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 50%;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.clearSearchBtn:hover {
+  color: #fff;
+}
+
+.filterSelectWrapper {
+  min-width: 170px;
+}
+
+/* Badge System for Rich Fault Policies matching Dashboard */
+.badgeNeutral, .badgeAmber, .badgeRed, .badgeGreen, .badgeCyan {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badgeNeutral {
+  background: #262626;
+  color: #d4d4d4;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.badgeAmber {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.badgeRed {
+  background: rgba(185, 28, 28, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(185, 28, 28, 0.25);
+}
+
+.badgeGreen {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badgeCyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.25);
+}
+
+.coloTagActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.coloDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 6px #10b981;
 }
 
 /* Logs Table */

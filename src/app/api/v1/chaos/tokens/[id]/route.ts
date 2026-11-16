@@ -39,6 +39,10 @@ export async function DELETE(
       });
 
       // Record Audit Log (Token Revocation via Agent)
+      const rayHeader = req.headers.get('cf-ray') || '';
+      const rayColo = rayHeader.includes('-') ? rayHeader.split('-')[1]?.toUpperCase() : null;
+      const colo = rayColo || req.headers.get('cf-ipcountry') || 'EDGE';
+
       await prisma.chaosLog.create({
         data: {
           userId: user.id,
@@ -47,7 +51,9 @@ export async function DELETE(
           source: 'AGENT_API',
           tokenId: token.id,
           tokenHint: token.tokenHint,
-          statusCode: 200
+          edgeColo: colo,
+          statusCode: 200,
+          rayId: rayHeader || undefined
         }
       }).catch(err => console.error('Failed to log token revocation audit:', err));
     }

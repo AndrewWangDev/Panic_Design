@@ -29,6 +29,23 @@ export async function POST(req: Request) {
       }
     });
 
+    // Record Global Revocation Audit Log
+    const rayHeader = req.headers.get('cf-ray') || '';
+    const rayColo = rayHeader.includes('-') ? rayHeader.split('-')[1]?.toUpperCase() : null;
+    const colo = rayColo || req.headers.get('cf-ipcountry') || 'EDGE';
+
+    await prisma.chaosLog.create({
+      data: {
+        userId: session.user.id,
+        targetUrl: 'ALL_ACTIVE_TOKENS',
+        injectedFault: 'TOKEN_REVOKED',
+        source: 'WEB_DASHBOARD',
+        edgeColo: colo,
+        statusCode: 200,
+        rayId: rayHeader || undefined
+      }
+    }).catch(err => console.error('Failed to log global revocation audit:', err));
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Revoke All Tokens Error:', error);
