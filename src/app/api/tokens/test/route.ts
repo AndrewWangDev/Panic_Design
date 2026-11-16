@@ -25,11 +25,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing token' }, { status: 400 });
     }
 
-    // Cryptographic JWT verification using AUTH_SECRET
+    // Cryptographic JWT verification using CHAOS_JWT_SECRET or AUTH_SECRET
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
+    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
-      return NextResponse.json({ error: 'Server misconfiguration: missing AUTH_SECRET' }, { status: 500 });
+      return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }
 
     let payload: any;
