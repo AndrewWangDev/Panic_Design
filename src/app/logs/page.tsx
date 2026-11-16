@@ -2,14 +2,25 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import { Activity, RefreshCw, Filter, Search, Terminal, Globe, Shield, ArrowUpRight } from 'lucide-react';
+import { Activity, RefreshCw, Filter, Search, Terminal, Globe, Shield, ArrowUpRight, X } from 'lucide-react';
+import CustomSelect from '@/app/dashboard/CustomSelect';
 import styles from './logs.module.css';
+
+interface FaultPolicy {
+  fault: string;
+  latency?: number;
+  jitter?: number;
+  packetLoss?: number;
+  distribution?: string;
+  mutilationStrategy?: string;
+}
 
 interface LogItem {
   id: string;
   source: string;
   targetUrl: string;
   injectedFault: string;
+  faultPolicy?: FaultPolicy;
   tokenId?: string | null;
   tokenHint?: string | null;
   edgeColo?: string | null;
@@ -24,6 +35,72 @@ interface AuditSummary {
   todayInjections: number;
   topTargets: Array<{ target: string; count: number }>;
   faultCounts: Record<string, number>;
+}
+
+const SOURCE_OPTIONS = [
+  { value: 'ALL', label: 'All Sources' },
+  { value: 'WEB_DASHBOARD', label: 'Web Console' },
+  { value: 'AGENT_API', label: 'AI Agent (Codex/API)' },
+  { value: 'DIRECT_DATA_PLANE', label: 'Edge Ingress Gateway' },
+];
+
+const FAULT_OPTIONS = [
+  { value: 'ALL', label: 'All Fault Policies' },
+  { value: 'latency', label: 'Latency & Chaos Matrix' },
+  { value: '502', label: '502 Bad Gateway' },
+  { value: '504', label: '504 Gateway Timeout' },
+  { value: '429', label: '429 Rate Limit' },
+  { value: 'TOKEN_MINTED', label: 'Token Minted' },
+  { value: 'TOKEN_REVOKED', label: 'Token Revoked' },
+];
+
+function formatDateTime(iso: string): { time: string; date: string } {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return { time: '--:--', date: '----' };
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return { time, date };
+}
+
+function renderFaultBadges(log: LogItem) {
+  const policy = log.faultPolicy;
+  const fault = policy?.fault || log.injectedFault;
+
+  if (fault === 'TOKEN_MINTED') {
+    return <span className={styles.badgeGreen}>Token Minted</span>;
+  }
+  if (fault === 'TOKEN_REVOKED') {
+    return <span className={styles.badgeNeutral}>Token Revoked</span>;
+  }
+  if (fault === '502') {
+    return <span className={styles.badgeRed}>502 Bad Gateway</span>;
+  }
+  if (fault === '504') {
+    return <span className={styles.badgeRed}>504 Gateway Timeout</span>;
+  }
+  if (fault === '429') {
+    return <span className={styles.badgeAmber}>429 Rate Limit</span>;
+  }
+  if (fault === 'latency') {
+    const lat = policy?.latency ?? log.latencyMs ?? 0;
+    const jit = policy?.jitter ?? 0;
+    const drop = policy?.packetLoss ?? 0;
+    const dist = policy?.distribution;
+    const mut = policy?.mutilationStrategy;
+
+    return (
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className={styles.badgeAmber}>Lat: {lat}ms</span>
+        {jit > 0 && <span className={styles.badgeAmber}>Jit: ±{jit}ms</span>}
+        {drop > 0 && <span className={styles.badgeRed}>Drop: {drop}%</span>}
+        {dist && <span className={styles.badgeNeutral}>{dist}</span>}
+        {mut && mut !== 'None' && <span className={styles.badgeRed}>{mut}</span>}
+      </div>
+    );
+  }
+
+  return <span className={styles.badgeNeutral}>{fault}</span>;
 }
 
 export default function AuditLogsPage() {
@@ -75,13 +152,26 @@ export default function AuditLogsPage() {
     }
   }, [isLoggedIn, status, fetchLogs]);
 
-  // Auto-refresh interval
+  // Auto-refresh interval with Page Visibility API support
   useEffect(() => {
     if (!isLoggedIn || !autoRefresh) return;
+
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchLogs(false);
     }, 6000);
-    return () => clearInterval(interval);
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        fetchLogs(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [isLoggedIn, autoRefresh, fetchLogs]);
 
   if (status === 'loading' || (isLoading && isLoggedIn)) {
@@ -202,7 +292,7 @@ export default function AuditLogsPage() {
           <div className={styles.kpiLabel}>Active Fault Breakdown</div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
             {Object.entries(summary?.faultCounts || {}).slice(0, 4).map(([f, count]) => (
-              <span key={f} className={styles.badgeFault} style={{ fontSize: '10px' }}>
+              <span key={f} className={styles.badgeNeutral} style={{ fontSize: '10px' }}>
                 {f}: {count}
               </span>
             ))}
@@ -220,32 +310,26 @@ export default function AuditLogsPage() {
           <span style={{ fontSize: '12px', fontWeight: 600 }}>Filter:</span>
         </div>
 
-        <select
-          className={styles.selectInput}
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-        >
-          <option value="ALL">All Sources</option>
-          <option value="WEB_DASHBOARD">Web Dashboard</option>
-          <option value="AGENT_API">AI Agent (Codex/API)</option>
-          <option value="DIRECT_DATA_PLANE">Direct Gateway</option>
-        </select>
+        <div className={styles.filterSelectWrapper}>
+          <CustomSelect
+            options={SOURCE_OPTIONS}
+            value={sourceFilter}
+            onChange={(val) => setSourceFilter(val)}
+          />
+        </div>
 
-        <select
-          className={styles.selectInput}
-          value={faultFilter}
-          onChange={(e) => setFaultFilter(e.target.value)}
-        >
-          <option value="ALL">All Faults</option>
-          <option value="502">502 Bad Gateway</option>
-          <option value="504">504 Gateway Timeout</option>
-          <option value="429">429 Rate Limit</option>
-          <option value="latency">Latency & Packet Loss</option>
-          <option value="TOKEN_MINTED">Token Minted</option>
-          <option value="TOKEN_REVOKED">Token Revoked</option>
-        </select>
+        <div className={styles.filterSelectWrapper} style={{ minWidth: '200px' }}>
+          <CustomSelect
+            options={FAULT_OPTIONS}
+            value={faultFilter}
+            onChange={(val) => setFaultFilter(val)}
+          />
+        </div>
 
-        <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
+        <div className={styles.searchContainer}>
+          <div className={styles.searchIconWrapper}>
+            <Search size={14} />
+          </div>
           <input
             type="text"
             className={styles.searchInput}
@@ -256,9 +340,10 @@ export default function AuditLogsPage() {
           {targetSearch && (
             <button
               onClick={() => setTargetSearch('')}
-              style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}
+              className={styles.clearSearchBtn}
+              title="Clear search"
             >
-              ×
+              <X size={14} />
             </button>
           )}
         </div>
@@ -280,7 +365,7 @@ export default function AuditLogsPage() {
                   <th>Timestamp</th>
                   <th>Source</th>
                   <th>Target Host</th>
-                  <th>Injected Fault</th>
+                  <th>Injected Fault Policy</th>
                   <th>PoP</th>
                   <th>Token Hint</th>
                   <th>Ray ID</th>
@@ -288,22 +373,13 @@ export default function AuditLogsPage() {
               </thead>
               <tbody>
                 {logs.map((log) => {
-                  const date = new Date(log.executedAt);
+                  const dt = formatDateTime(log.executedAt);
                   const sourceClass =
                     log.source === 'AGENT_API'
                       ? styles.sourceAgent
                       : log.source === 'WEB_DASHBOARD'
                       ? styles.sourceWeb
                       : styles.sourceEdge;
-
-                  let faultClass = styles.faultLatency;
-                  if (log.injectedFault === '502' || log.injectedFault === '504') {
-                    faultClass = styles.fault502;
-                  } else if (log.injectedFault === '429') {
-                    faultClass = styles.fault429;
-                  } else if (log.injectedFault === 'TOKEN_MINTED') {
-                    faultClass = styles.faultMint;
-                  }
 
                   let displayHost = log.targetUrl;
                   try {
@@ -312,10 +388,16 @@ export default function AuditLogsPage() {
                     }
                   } catch {}
 
+                  const isKnownColo =
+                    log.edgeColo &&
+                    log.edgeColo !== 'GLOBAL-EDGE' &&
+                    log.edgeColo !== 'UNKNOWN' &&
+                    log.edgeColo !== 'ANYCAST';
+
                   return (
                     <tr key={log.id}>
                       <td className={styles.timeCol}>
-                        {date.toLocaleTimeString()} <span style={{ opacity: 0.5, fontSize: '10px' }}>{date.toLocaleDateString()}</span>
+                        <span>{dt.time}</span> <span style={{ opacity: 0.5, fontSize: '10px' }}>{dt.date}</span>
                       </td>
                       <td>
                         <span className={`${styles.badgeSource} ${sourceClass}`}>
@@ -326,19 +408,23 @@ export default function AuditLogsPage() {
                         {displayHost}
                       </td>
                       <td>
-                        <span className={`${styles.badgeFault} ${faultClass}`}>
-                          {log.injectedFault === 'TOKEN_MINTED' ? 'Token Minted' : log.injectedFault === 'TOKEN_REVOKED' ? 'Token Revoked' : log.injectedFault}
-                          {log.latencyMs ? ` (+${log.latencyMs}ms)` : ''}
-                        </span>
+                        {renderFaultBadges(log)}
                       </td>
                       <td>
-                        <span className={styles.coloTag}>{log.edgeColo || 'ANYCAST'}</span>
+                        {isKnownColo ? (
+                          <span className={styles.coloTagActive}>
+                            <span className={styles.coloDot} />
+                            {log.edgeColo}
+                          </span>
+                        ) : (
+                          <span className={styles.coloTag}>{log.edgeColo || 'GLOBAL-EDGE'}</span>
+                        )}
                       </td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)' }}>
                         {log.tokenHint || '-'}
                       </td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#64748b' }}>
-                        {log.rayId ? log.rayId.slice(0, 12) + '...' : '-'}
+                        {log.rayId ? (log.rayId.includes('-') ? log.rayId.split('-')[0].slice(0, 10) + '...' : log.rayId.slice(0, 10) + '...') : '-'}
                       </td>
                     </tr>
                   );

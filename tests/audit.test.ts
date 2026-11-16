@@ -4,6 +4,7 @@ const mockAuth = vi.fn();
 const mockAuthenticateApiKey = vi.fn();
 const mockChaosLogFindMany = vi.fn();
 const mockChaosLogCount = vi.fn();
+const mockTokenFindMany = vi.fn();
 
 vi.mock('@/auth', () => ({
   auth: () => mockAuth()
@@ -18,6 +19,9 @@ vi.mock('@/lib/prisma', () => ({
     chaosLog: {
       findMany: mockChaosLogFindMany,
       count: mockChaosLogCount
+    },
+    token: {
+      findMany: mockTokenFindMany
     }
   })
 }));
@@ -62,6 +66,9 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
     mockChaosLogCount
       .mockResolvedValueOnce(42) // total
       .mockResolvedValueOnce(5);  // today
+    mockTokenFindMany.mockResolvedValueOnce([
+      { id: 'tok_1', config: JSON.stringify({ fault: '502' }) }
+    ]);
 
     const { GET } = await import('../src/app/api/audit/logs/route');
     const req = new Request('https://panic.andrewwangdev.com/api/audit/logs?limit=10');
@@ -71,6 +78,8 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
     expect(json.success).toBe(true);
     expect(json.logs.length).toBe(1);
     expect(json.logs[0].edgeColo).toBe('LAX');
+    expect(json.logs[0].faultPolicy).toBeDefined();
+    expect(json.logs[0].faultPolicy.fault).toBe('502');
     expect(json.summary.totalInjections).toBe(42);
     expect(json.summary.todayInjections).toBe(5);
     expect(json.summary.topTargets[0]).toEqual({ target: 'api.example.com', count: 2 });

@@ -1892,7 +1892,18 @@ export default function Dashboard() {
           {/* Right: Edge Payload */}
           <div className={`${styles.card} ${styles.edgePayloadCard} ${isSimulating ? styles.edgePayloadCardSimulating : ''}`}>
             <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-              <span>Edge Payload {isSimulating && '- Global Telemetry'}</span>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <span>Edge Payload {isSimulating && '- Global Telemetry'}</span>
+                {isLoggedIn ? (
+                  <span className={styles.liveStreamBadge} title="Real-time connected to Cloudflare D1 telemetry stream">
+                    <span className={styles.liveStreamDot} /> LIVE STREAM
+                  </span>
+                ) : (
+                  <span className={styles.demoStreamBadge} title="Running guest simulation stream">
+                    <span className={styles.demoStreamDot} /> GUEST DEMO
+                  </span>
+                )}
+              </div>
               {isSimulating ? (
                 <button className={styles.cancelBtn} onClick={() => {
                   setIsSimulating(false);

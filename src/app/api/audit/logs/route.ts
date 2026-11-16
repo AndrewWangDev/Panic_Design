@@ -85,21 +85,72 @@ export async function GET(req: Request) {
       .slice(0, 3)
       .map(([target, count]) => ({ target, count }));
 
+    // Batch resolve Token configurations for rich Fault Policy badging
+    const tokenIds = Array.from(new Set(logs.map(l => l.tokenId).filter((id): id is string => Boolean(id))));
+    const tokenConfigMap: Record<string, any> = {};
+    if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
+      try {
+        const tokens = await prisma.token.findMany({
+          where: { id: { in: tokenIds } },
+          select: { id: true, config: true }
+        });
+        for (const t of tokens) {
+          try {
+            tokenConfigMap[t.id] = JSON.parse(t.config);
+          } catch {}
+        }
+      } catch (tokenErr) {
+        console.warn('Failed to batch query token configs for logs:', tokenErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      logs: logs.map(l => ({
-        id: l.id,
-        source: l.source,
-        targetUrl: l.targetUrl,
-        injectedFault: l.injectedFault,
-        tokenId: l.tokenId,
-        tokenHint: l.tokenHint,
-        edgeColo: l.edgeColo || 'ANYCAST',
-        statusCode: l.statusCode,
-        latencyMs: l.latencyMs,
-        rayId: l.rayId,
-        executedAt: l.executedAt.toISOString()
-      })),
+      logs: logs.map(l => {
+        // Derive robust edgeColo from record or rayId
+        let derivedColo = l.edgeColo;
+        if (!derivedColo || derivedColo === 'UNKNOWN' || derivedColo === 'ANYCAST') {
+          if (l.rayId && l.rayId.includes('-')) {
+            derivedColo = l.rayId.split('-')[1]?.toUpperCase();
+          }
+        }
+        if (!derivedColo || derivedColo === 'UNKNOWN' || derivedColo === 'ANYCAST') {
+          derivedColo = 'GLOBAL-EDGE';
+        }
+
+        // Construct complete Fault Policy
+        const conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;
+        const faultPolicy = conf ? {
+          fault: conf.fault || l.injectedFault,
+          latency: typeof conf.latency === 'number' ? conf.latency : (l.latencyMs ?? 0),
+          jitter: typeof conf.jitter === 'number' ? conf.jitter : 0,
+          packetLoss: typeof conf.packetLoss === 'number' ? conf.packetLoss : 0,
+          distribution: conf.distribution || 'Normal',
+          mutilationStrategy: conf.mutilationStrategy || 'None'
+        } : {
+          fault: l.injectedFault,
+          latency: l.latencyMs ?? 0,
+          jitter: 0,
+          packetLoss: 0,
+          distribution: 'Normal',
+          mutilationStrategy: 'None'
+        };
+
+        return {
+          id: l.id,
+          source: l.source,
+          targetUrl: l.targetUrl,
+          injectedFault: l.injectedFault,
+          faultPolicy,
+          tokenId: l.tokenId,
+          tokenHint: l.tokenHint,
+          edgeColo: derivedColo,
+          statusCode: l.statusCode,
+          latencyMs: l.latencyMs,
+          rayId: l.rayId,
+          executedAt: l.executedAt.toISOString()
+        };
+      }),
       summary: {
         totalInjections: totalCount,
         todayInjections: todayCount,

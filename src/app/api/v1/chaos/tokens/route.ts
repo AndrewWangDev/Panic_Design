@@ -283,6 +283,10 @@ export async function POST(req: Request) {
       .sign(secret);
 
     // Record Audit Log (Token Minted via Agent)
+    const rayHeader = req.headers.get('cf-ray') || '';
+    const rayColo = rayHeader.includes('-') ? rayHeader.split('-')[1]?.toUpperCase() : null;
+    const colo = rayColo || req.headers.get('cf-ipcountry') || 'EDGE';
+
     await prisma.chaosLog.create({
       data: {
         userId: user.id,
@@ -291,8 +295,10 @@ export async function POST(req: Request) {
         source: 'AGENT_API',
         tokenId: token.id,
         tokenHint,
+        edgeColo: colo,
         statusCode: 200,
-        latencyMs: latency
+        latencyMs: latency,
+        rayId: rayHeader || undefined
       }
     }).catch(err => console.error('Failed to write mint audit log:', err));
 
