@@ -22,6 +22,11 @@ model User {
   hourlyQuota   Int        @default(0)
   lastQuotaReset DateTime  @default(now())
 
+  // Developer API Key (Agent M2M Authentication)
+  apiKeyHash    String?    @unique
+  apiKeyPrefix  String?
+  apiKeyCreatedAt DateTime?
+
   tokens        Token[]
   usages        Usage[]
   logs          ChaosLog[]
@@ -65,7 +70,17 @@ model ChaosLog {
   targetUrl     String    
   injectedFault String    
   
+  // Structured Telemetry & Audit Expansion (Add-only)
+  source        String    @default("DIRECT_DATA_PLANE") // WEB_DASHBOARD | AGENT_API | DIRECT_DATA_PLANE
+  tokenId       String?
+  tokenHint     String?
+  edgeColo      String?
+  statusCode    Int?
+  latencyMs     Int?
+  rayId         String?
+  
   executedAt    DateTime  @default(now())
   
   @@index([userId, executedAt]) 
+  @@index([userId, source])
 }

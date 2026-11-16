@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Microscope, CheckCircle2 } from 'lucide-react';
+import { Microscope, CheckCircle2, Terminal, Code2, ShieldCheck } from 'lucide-react';
 
 export default function Docs() {
   const [activeSection, setActiveSection] = useState('auth');
@@ -235,6 +235,54 @@ export default function Docs() {
             </tr>
           </tbody>
         </table>
+
+        {/* 4. AI Agent & Codex Integration */}
+        <div style={{ marginBottom: '80px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <Terminal size={28} color="#10b981" />
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fff', margin: 0 }}>4. AI Agent & Codex Integration (M2M Skill)</h2>
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, fontSize: '1rem', marginBottom: '24px' }}>
+            AI Coding Agents (such as <strong>Codex</strong>, <strong>Muse</strong>, <strong>Cursor</strong>, or <strong>Claude Code</strong>) can execute chaos engineering tasks autonomously without touching the web dashboard. By providing an Account Developer API Key (<code style={codeStyle}>pd_live_...</code>), agents can programmatically mint short-lived JWT tokens and inject simulated edge failures during automated testing.
+          </p>
+
+          <div style={{ background: '#111111', border: '1px solid #222', borderRadius: '12px', padding: '24px', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#10b981', fontWeight: 600, fontSize: '0.95rem' }}>
+              <ShieldCheck size={18} />
+              <span>Zero-Touch Agent Workflow</span>
+            </div>
+            <ol style={{ color: '#d4d4d8', paddingLeft: '20px', lineHeight: 1.8, fontSize: '0.9rem', margin: 0 }}>
+              <li>Generate your Developer API Key in the user dropdown: <strong>Developer API Key ➔ Generate Key</strong>.</li>
+              <li>Provide the key to your AI agent environment via the <code style={codeStyle}>PANIC_DESIGN_API_KEY</code> variable.</li>
+              <li>The agent calls <code style={codeStyle}>POST /api/v1/chaos/tokens</code> to mint a chaos token with desired fault parameters.</li>
+              <li>The agent tests upstream resilience by calling <code style={codeStyle}>https://gateway.andrewwangdev.com</code> with header <code style={codeStyle}>X-Chaos-Token: &lt;jwt&gt;</code>.</li>
+              <li>All agent activities are streamed in real-time to your <strong style={{ color: '#10b981' }}>Live Audit Console</strong> (<code style={codeStyle}>/logs</code>).</li>
+            </ol>
+          </div>
+
+          <pre style={{
+            background: '#0a0a0a',
+            border: '1px solid #222',
+            padding: '20px',
+            borderRadius: '12px',
+            fontFamily: 'var(--font-mono), monospace',
+            fontSize: '0.85rem',
+            color: '#a1a1aa',
+            lineHeight: 1.6,
+            overflowX: 'auto'
+          }}>
+{`# 1. Mint Chaos Token via Agent API
+curl -s -X POST https://panic.andrewwangdev.com/api/v1/chaos/tokens \\
+  -H "Authorization: Bearer $PANIC_DESIGN_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"targetHost": "api.example.com", "fault": "502", "customTtl": 0.25}'
+
+# 2. Test Upstream Circuit Breaker via Gateway Ingress
+curl -i -H "X-Chaos-Token: $CHAOS_JWT" \\
+  "https://gateway.andrewwangdev.com/v1/checkout"`}
+          </pre>
+        </div>
 
         {/* Appendix */}
         <div style={{ background: '#111111', border: '1px solid #222', borderRadius: '16px', padding: '40px' }}>

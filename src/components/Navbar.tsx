@@ -48,6 +48,7 @@ export default function Navbar() {
           </Link>
           <div className={`${styles.links} ${isMobileMenuOpen ? styles.mobileOpen : ''}`}>
             <Link href="/dashboard" className={`${styles.link} ${pathname === '/dashboard' ? styles.active : ''}`}>Dashboard</Link>
+            <Link href="/logs" className={`${styles.link} ${pathname === '/logs' ? styles.active : ''}`}>Logs</Link>
             <Link href="/docs" className={`${styles.link} ${pathname === '/docs' ? styles.active : ''}`}>Docs</Link>
             <Link href="/changelog" className={`${styles.link} ${pathname === '/changelog' ? styles.active : ''}`}>Changelog</Link>
           </div>
