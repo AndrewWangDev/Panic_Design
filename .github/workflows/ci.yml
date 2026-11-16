@@ -68,6 +68,7 @@ jobs:
       contents: read
     env:
       AUTH_SECRET: "mock-secret-for-ci-testing-only-00000000000000000000000000000000"
+      CHAOS_JWT_SECRET: "mock-secret-for-ci-testing-only-00000000000000000000000000000000"
       AUTH_CLIENT_ID: "ci-mock-client-id"
       AUTH_CLIENT_SECRET: "ci-mock-client-secret"
       TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA"

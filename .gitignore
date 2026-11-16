@@ -47,10 +47,11 @@ next-env.d.ts
 *.db
 *.db-journal
 
-# Cloudflare OpenNext build artifacts
+# Cloudflare OpenNext build artifacts & deployment configs
 .open-next/
 .wrangler/
 .wrangler
+wrangler.toml
 
 # Temporary dumps and scripts
 ec2.txt
