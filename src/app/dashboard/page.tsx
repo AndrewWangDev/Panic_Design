@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { Copy, Check, ChevronLeft, ChevronRight, Activity, Play, Pause, Zap, Search, Lock, MonitorSmartphone, Sparkles, Send, RotateCcw, X } from 'lucide-react';
 import styles from './dashboard.module.css';
 import CustomSelect from './CustomSelect';
@@ -1890,9 +1891,9 @@ export default function Dashboard() {
 
           {/* Right: Edge Payload */}
           <div className={`${styles.card} ${styles.edgePayloadCard} ${isSimulating ? styles.edgePayloadCardSimulating : ''}`}>
-            <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
               <span>Edge Payload {isSimulating && '- Global Telemetry'}</span>
-              {isSimulating && (
+              {isSimulating ? (
                 <button className={styles.cancelBtn} onClick={() => {
                   setIsSimulating(false);
                   setAiInputValue('');
@@ -1901,6 +1902,27 @@ export default function Dashboard() {
                 }}>
                   Cancel Test
                 </button>
+              ) : (
+                <Link
+                  href="/logs"
+                  title="View Full Audit Logs"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: 'var(--text-secondary, #94a3b8)',
+                    textDecoration: 'none',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'rgba(255, 255, 255, 0.03)'
+                  }}
+                >
+                  <Activity size={12} />
+                  <span>Audit Console ↗</span>
+                </Link>
               )}
             </div>
             
