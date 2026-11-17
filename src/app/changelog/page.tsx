@@ -4,6 +4,22 @@ import React from 'react';
 
 const releases = [
   {
+    version: "v2.0.0 - Enterprise AI Agent M2M Ingress, Payload Mutilation & Zero-Trust Edge Architecture",
+    date: "November 2026",
+    changes: [
+      { type: "Feature", text: "Launched AI Agent & Developer M2M Ingress API (POST /api/v1/chaos/tokens) powered by SHA-256 hashed Developer API Keys (pd_live_...), enabling seamless integration with Cursor, Claude Code, and autonomous test suites." },
+      { type: "Feature", text: "Introduced Cloudflare D1-backed Real-Time Audit & Telemetry Console (/logs) streaming multi-cloud edge ingress logs, Ray IDs, authentic PoP tracking, and multi-faceted fault breakdowns." },
+      { type: "Feature", text: "Engineered Edge Payload Mutilation Engine featuring three deterministic corruptions: Unexpected EOF (truncated chunk stream), Type Poisoning (primitive inversion), and Empty Shell (zero-byte stripping)." },
+      { type: "Feature", text: "Added \"444 No Response\" edge fault emulation to test low-level client socket timeouts and TCP RST connection pool resiliency." },
+      { type: "Feature", text: "Supported dual-header edge ingress (X-Chaos-Token & Authorization: Bearer) with automated header scrubbing to prevent upstream credential leakage." },
+      { type: "Security", text: "Enforced strict zero-trust cryptographic separation: isolated Web Auth session cookies from Data Plane Token signing via dedicated CHAOS_JWT_SECRET." },
+      { type: "Security", text: "Implemented dual-stack DNS-over-HTTPS (DoH) SSRF prevention blocking private RFC 1918/4193 subnets, loopbacks, and IPv4-mapped IPv6 obfuscation vectors." },
+      { type: "Security", text: "Hardened account deletion lifecycle: purged API key hashes and prefixes upon account deletion to eliminate zombie M2M credentials." },
+      { type: "Bugfix", text: "Resolved quota refund race conditions by migrating to atomic database decrement operators." },
+      { type: "Bugfix", text: "Fixed upstream gzip/brotli compression desynchronization during payload mutilation by negotiating Accept-Encoding: identity at the edge." }
+    ]
+  },
+  {
     version: "v1.4.0 - Compliance Architecture & Telemetry UX Polish",
     date: "June 6, 2026",
     changes: [

@@ -60,33 +60,17 @@ export async function GET(req: Request) {
       }),
       prisma.chaosLog.findMany({
         where: { userId },
-        select: { injectedFault: true, targetUrl: true },
+        select: { injectedFault: true, targetUrl: true, tokenId: true, latencyMs: true },
         take: 500
       })
     ]);
 
-    // Calculate aggregated metrics
-    const faultCounts: Record<string, number> = {};
-    const targetCounts: Record<string, number> = {};
-
-    for (const item of allUserLogs) {
-      faultCounts[item.injectedFault] = (faultCounts[item.injectedFault] || 0) + 1;
-      let host = item.targetUrl || 'unknown';
-      try {
-        if (host.startsWith('http://') || host.startsWith('https://')) {
-          host = new URL(host).hostname;
-        }
-      } catch {}
-      targetCounts[host] = (targetCounts[host] || 0) + 1;
-    }
-
-    const sortedTargets = Object.entries(targetCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([target, count]) => ({ target, count }));
-
-    // Batch resolve Token configurations for rich Fault Policy badging
-    const tokenIds = Array.from(new Set(logs.map(l => l.tokenId).filter((id): id is string => Boolean(id))));
+    // Batch resolve Token configurations for rich Fault Policy badging & multi-faceted breakdown
+    const allTokenIdCandidates = [
+      ...logs.map(l => l.tokenId),
+      ...allUserLogs.map(l => l.tokenId)
+    ].filter((id): id is string => Boolean(id));
+    const tokenIds = Array.from(new Set(allTokenIdCandidates));
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
       try {
@@ -103,6 +87,55 @@ export async function GET(req: Request) {
         console.warn('Failed to batch query token configs for logs:', tokenErr);
       }
     }
+
+    // Calculate aggregated metrics
+    const faultCounts: Record<string, number> = {};
+    const targetCounts: Record<string, number> = {};
+
+    const addFaultFacet = (facet: string) => {
+      faultCounts[facet] = (faultCounts[facet] || 0) + 1;
+    };
+
+    for (const item of allUserLogs) {
+      const conf = (item.tokenId && tokenConfigMap[item.tokenId]) || null;
+      const primaryFault = conf?.fault || item.injectedFault;
+
+      // 1. Primary fault pattern
+      if (primaryFault === 'latency' || (item.latencyMs && item.latencyMs > 0)) {
+        addFaultFacet('latency');
+      } else if (primaryFault) {
+        addFaultFacet(primaryFault);
+      }
+
+      // 2. Active multi-faceted chaos parameters from token config
+      if (conf) {
+        if (typeof conf.jitter === 'number' && conf.jitter > 0) {
+          addFaultFacet('jitter');
+        }
+        if (typeof conf.packetLoss === 'number' && conf.packetLoss > 0) {
+          addFaultFacet('drop');
+        }
+        if (conf.mutilationStrategy && conf.mutilationStrategy !== 'None') {
+          addFaultFacet(conf.mutilationStrategy);
+        }
+        if (conf.distribution && conf.distribution !== 'Uniform') {
+          addFaultFacet(conf.distribution);
+        }
+      }
+
+      let host = item.targetUrl || 'unknown';
+      try {
+        if (host.startsWith('http://') || host.startsWith('https://')) {
+          host = new URL(host).hostname;
+        }
+      } catch {}
+      targetCounts[host] = (targetCounts[host] || 0) + 1;
+    }
+
+    const sortedTargets = Object.entries(targetCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([target, count]) => ({ target, count }));
 
     return NextResponse.json({
       success: true,

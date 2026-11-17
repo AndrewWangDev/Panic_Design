@@ -100,4 +100,59 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
     const json = await res.json();
     expect(json.success).toBe(true);
   });
+
+  it('correctly aggregates multi-faceted fault breakdown (latency, jitter, drop, distribution, mutilation)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    mockChaosLogFindMany
+      .mockResolvedValueOnce([
+        {
+          id: 'log_combo',
+          source: 'EDGE_INGRESS',
+          targetUrl: 'https://api.example.com',
+          injectedFault: 'latency',
+          tokenId: 'tok_combo',
+          tokenHint: 'tok_combo...',
+          edgeColo: 'SJC',
+          statusCode: 200,
+          latencyMs: 1200,
+          rayId: 'ray_combo',
+          executedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          injectedFault: 'latency',
+          targetUrl: 'https://api.example.com',
+          tokenId: 'tok_combo',
+          latencyMs: 1200
+        }
+      ]);
+    mockChaosLogCount.mockResolvedValue(1);
+    mockTokenFindMany.mockResolvedValueOnce([
+      {
+        id: 'tok_combo',
+        config: JSON.stringify({
+          fault: 'latency',
+          latency: 1200,
+          jitter: 300,
+          packetLoss: 30,
+          distribution: 'Normal',
+          mutilationStrategy: 'Unexpected EOF'
+        })
+      }
+    ]);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.summary.faultCounts).toEqual({
+      latency: 1,
+      jitter: 1,
+      drop: 1,
+      'Normal': 1,
+      'Unexpected EOF': 1
+    });
+  });
 });
