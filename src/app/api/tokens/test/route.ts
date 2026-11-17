@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'QUOTA_EXCEEDED', message: quota.reason }, { status: 429 });
     }
 
-    const baseUrl = process.env.DATA_PLANE_URL || 'https://gateway.andrewwangdev.com';
+    const baseUrl = (env as any)?.DATA_PLANE_URL || process.env.DATA_PLANE_URL || 'https://gateway.andrewwangdev.com';
     const gatewayUrl = `${baseUrl.replace(/\/$/, '')}/?token=${encodeURIComponent(token)}`;
     
     const startTime = Date.now();
@@ -94,8 +94,11 @@ export async function POST(req: Request) {
     const hasChaosTelemetry = resHeaders.has('x-panic-colo') && resHeaders.get('x-panic-colo') !== 'UNKNOWN';
     const isGatewayRejection = !hasChaosTelemetry && (status === 401 || status === 403);
 
-    // If gateway itself rejected the token or is unreachable, do not fabricate telemetry
+    // If gateway itself rejected the token or is unreachable, do not fabricate telemetry and refund quota
     if (!hasChaosTelemetry) {
+      const { refundQuota } = await import('@/lib/quota');
+      await refundQuota(session.user.id).catch(() => {});
+
       return NextResponse.json({
         success: false,
         status: status || 503,
@@ -106,6 +109,7 @@ export async function POST(req: Request) {
         telemetry: null,
         chaosReason: null,
         chaosClientContext: null,
+        mutilatedStrategy: null,
         resolvedIp: payload.targetHost ? (await resolveHostIp(payload.targetHost).catch(() => 'Unresolved')) || 'Unresolved' : 'Unresolved',
         responseBody
       });
@@ -170,6 +174,7 @@ export async function POST(req: Request) {
     const colo = resHeaders.get('x-panic-colo') || 'UNKNOWN';
     const chaosReason = resHeaders.get('X-Chaos-Reason');
     const chaosClientContext = resHeaders.get('X-Chaos-Client-Context');
+    const mutilatedStrategy = resHeaders.get('X-Chaos-Mutilated') || resHeaders.get('x-chaos-mutilated');
 
     // Resolve IP purely for terminal visual logging
     let resolvedIp = 'Unknown IP';
@@ -202,6 +207,7 @@ export async function POST(req: Request) {
       },
       chaosReason,
       chaosClientContext,
+      mutilatedStrategy,
       resolvedIp,
       responseBody
     });

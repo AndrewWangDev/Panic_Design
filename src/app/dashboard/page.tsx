@@ -874,7 +874,7 @@ const AiAutofillModal = ({
 
 export default function Dashboard() {
   const [targetHost, setTargetHost] = useState('');
-  const [fault, setFault] = useState<'502' | '504' | '429' | 'latency' | null>(null);
+  const [fault, setFault] = useState<'502' | '504' | '429' | '444' | 'latency' | null>(null);
   const [latency, setLatency] = useState(2500);
   const [jitter, setJitter] = useState(0);
   const [distribution, setDistribution] = useState<'Uniform' | 'Normal' | 'Spikes'>('Uniform');
@@ -1726,6 +1726,12 @@ export default function Dashboard() {
                   429 Rate Limit
                 </button>
                 <button 
+                  className={`${styles.capsuleBtn} ${fault === '444' ? styles.active : ''}`}
+                  onClick={() => setFault('444')}
+                >
+                  444 No Response
+                </button>
+                <button 
                   className={`${styles.capsuleBtn} ${fault === 'latency' ? styles.active : ''} ${isFlashing ? styles.inputFlash : ''}`}
                   onClick={() => setFault('latency')}
                 >
@@ -2009,7 +2015,14 @@ export default function Dashboard() {
                             next.packetDropCount++;
                           }
                           
-                          if (data.responseBody && (data.responseBody.includes('Unexpected EOF') || data.responseBody.includes('Type Poisoning') || data.responseBody.includes('Empty Shell') || data.responseBody.includes('MUTILATED_PAYLOAD'))) {
+                          if (data.mutilatedStrategy || (data.responseBody && (
+                            data.responseBody.includes('Unexpected EOF') || 
+                            data.responseBody.includes('Type Poisoning') || 
+                            data.responseBody.includes('Empty Shell') || 
+                            data.responseBody.includes('_chaos_intercept') || 
+                            data.responseBody.includes('_Poisoned') || 
+                            data.responseBody.includes('ERR_TCP_RESET')
+                          ))) {
                             next.mutilationCount++;
                           }
 

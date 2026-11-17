@@ -56,7 +56,7 @@ export default function WorldMap({ w1, w2, w3, t1, t2, t3, fault = 'latency', ta
 
   // t3 === 0 when Packet Loss triggers for a 'latency' fault
   const isPacketLoss = fault === 'latency' && t3 === 0 && !isPending;
-  const isAbort = fault === '502' || fault === '504' || fault === '429' || isPacketLoss;
+  const isAbort = fault === '502' || fault === '504' || fault === '429' || fault === '444' || isPacketLoss;
 
 
 
@@ -301,7 +301,7 @@ export default function WorldMap({ w1, w2, w3, t1, t2, t3, fault = 'latency', ta
   const effT3 = (aiMapData?.T3 !== undefined ? aiMapData.T3 : t3) ?? 0;
 
   const flag_1 = aiMapData?.flag_1 || effT1 === 0 || false;
-  const flag_2 = aiMapData ? (aiMapData.flag_2 || effT3 === 0) : (fault === '502' || fault === '504' || fault === '429' || isPacketLoss || effT3 === 0);
+  const flag_2 = aiMapData ? (aiMapData.flag_2 || effT3 === 0) : (fault === '502' || fault === '504' || fault === '429' || fault === '444' || isPacketLoss || effT3 === 0);
 
   // Dynamic visual timings scaled by actual latency with reasonable caps
   const baseScale = 4; // 1ms real = 4ms animation
@@ -377,7 +377,7 @@ export default function WorldMap({ w1, w2, w3, t1, t2, t3, fault = 'latency', ta
           <div style={{ display: 'flex', flexDirection: 'column', flex: '0 0 auto', alignItems: 'flex-start' }}>
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', marginBottom: '4px' }}>CHAOS POLICY</div>
             <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f59e0b', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-              {fault === 'latency' ? 'Traffic Degradation' : fault === '502' ? 'Bad Gateway (502)' : fault === '429' ? 'Rate Limit (429)' : 'Gateway Timeout (504)'}
+              {fault === 'latency' ? 'Traffic Degradation' : fault === '502' ? 'Bad Gateway (502)' : fault === '429' ? 'Rate Limit (429)' : fault === '444' ? 'No Response (444)' : 'Gateway Timeout (504)'}
             </div>
           </div>
 

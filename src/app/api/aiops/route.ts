@@ -11,6 +11,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { getPrisma } = await import('@/lib/prisma');
+    const prisma = getPrisma();
+    const activeUser = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!activeUser) {
+      return NextResponse.json({ error: 'Unauthorized: Account deleted' }, { status: 401 });
+    }
+
     const { env } = getCloudflareContext() as any;
     if (!env || !env.AI) {
       return NextResponse.json({ error: 'Cloudflare AI environment not found' }, { status: 500 });

@@ -134,11 +134,13 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     expect(json.success).toBe(true);
     expect(json.jwtToken).toBeDefined();
     expect(json.tokenId).toBe('token_agent_999');
+    expect(json.remainingSlots).toBeDefined();
+    expect(json.remainingActiveSlots).toBeDefined();
     expect(mockTokenCreate).toHaveBeenCalled();
     expect(mockChaosLogCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         source: 'AGENT_API',
-        injectedFault: '504'
+        injectedFault: 'TOKEN_MINTED'
       })
     }));
   });

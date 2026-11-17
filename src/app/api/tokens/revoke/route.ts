@@ -19,6 +19,14 @@ export async function POST(req: Request) {
 
     const prisma = getPrisma();
 
+    // Verify active, non-deleted user
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
+    }
+
     // Verify token ownership
     const token = await prisma.token.findUnique({
       where: { id }

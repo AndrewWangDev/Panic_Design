@@ -29,6 +29,20 @@ describe('Quota Engine: Core Logic & Concurrency Control', () => {
     expect(result.reason).toBe('User not found');
   });
 
+  it('should block quota deduction when account is deleted (githubId is null)', async () => {
+    mockFindUnique.mockResolvedValue({
+      id: 'deleted-user',
+      githubId: null,
+      dailyQuota: 0,
+      hourlyQuota: 0,
+      lastQuotaReset: new Date()
+    });
+
+    const result = await checkAndUpdateQuota('deleted-user');
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('Account deleted');
+  });
+
   it('should grant access and atomically increment quota within limits', async () => {
     const now = new Date();
     mockFindUnique.mockResolvedValue({
