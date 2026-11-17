@@ -82,6 +82,9 @@ function renderFaultBadges(log: LogItem) {
   if (fault === '429') {
     return <span className={styles.badgeAmber}>429 Rate Limit</span>;
   }
+  if (fault === '444') {
+    return <span className={styles.badgeRed}>444 No Response</span>;
+  }
   if (fault === 'latency') {
     const lat = policy?.latency ?? log.latencyMs ?? 0;
     const jit = policy?.jitter ?? 0;
@@ -101,6 +104,48 @@ function renderFaultBadges(log: LogItem) {
   }
 
   return <span className={styles.badgeNeutral}>{fault}</span>;
+}
+
+function getBreakdownBadgeProps(facet: string, count: number) {
+  let label = `${facet}: ${count}`;
+  let badgeClass = styles.badgeNeutral;
+
+  if (facet === 'latency') {
+    label = `Lat: ${count}`;
+    badgeClass = styles.badgeAmber;
+  } else if (facet === 'jitter') {
+    label = `Jit: ${count}`;
+    badgeClass = styles.badgeAmber;
+  } else if (facet === 'drop') {
+    label = `Drop: ${count}`;
+    badgeClass = styles.badgeRed;
+  } else if (facet === '502' || facet === '504' || facet === '444') {
+    label = `${facet}: ${count}`;
+    badgeClass = styles.badgeRed;
+  } else if (facet === '429') {
+    label = `429: ${count}`;
+    badgeClass = styles.badgeAmber;
+  } else if (facet === 'Unexpected EOF') {
+    label = `EOF: ${count}`;
+    badgeClass = styles.badgeRed;
+  } else if (facet === 'Type Poisoning') {
+    label = `Poison: ${count}`;
+    badgeClass = styles.badgeRed;
+  } else if (facet === 'Empty Shell') {
+    label = `Empty: ${count}`;
+    badgeClass = styles.badgeRed;
+  } else if (facet === 'TOKEN_MINTED') {
+    label = `Minted: ${count}`;
+    badgeClass = styles.badgeGreen;
+  } else if (facet === 'TOKEN_REVOKED') {
+    label = `Revoked: ${count}`;
+    badgeClass = styles.badgeNeutral;
+  } else if (facet === 'Normal' || facet === 'Uniform' || facet === 'Spikes') {
+    label = `${facet}: ${count}`;
+    badgeClass = styles.badgeCyan;
+  }
+
+  return { label, badgeClass };
 }
 
 export default function AuditLogsPage() {
@@ -290,12 +335,15 @@ export default function AuditLogsPage() {
 
         <div className={styles.kpiCard}>
           <div className={styles.kpiLabel}>Active Fault Breakdown</div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-            {Object.entries(summary?.faultCounts || {}).slice(0, 4).map(([f, count]) => (
-              <span key={f} className={styles.badgeNeutral} style={{ fontSize: '10px' }}>
-                {f}: {count}
-              </span>
-            ))}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+            {Object.entries(summary?.faultCounts || {}).slice(0, 8).map(([f, count]) => {
+              const { label, badgeClass } = getBreakdownBadgeProps(f, count);
+              return (
+                <span key={f} className={badgeClass} style={{ fontSize: '11px', padding: '2px 7px' }}>
+                  {label}
+                </span>
+              );
+            })}
             {Object.keys(summary?.faultCounts || {}).length === 0 && (
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>None yet</span>
             )}

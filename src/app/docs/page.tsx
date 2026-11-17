@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Microscope, CheckCircle2, Terminal, Code2, ShieldCheck } from 'lucide-react';
+import { Microscope, CheckCircle2, Terminal, Code2, ShieldCheck, Activity } from 'lucide-react';
 
 export default function Docs() {
   const [activeSection, setActiveSection] = useState('auth');
@@ -62,10 +62,14 @@ export default function Docs() {
         <div style={{ paddingBottom: '120px', minWidth: 0 }}>
           
           <div id="auth" ref={authRef} style={{ marginBottom: '80px', scrollMarginTop: '100px' }}>
-            <h2 style={{ marginTop: 0, fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '24px', borderBottom: '1px solid #333', paddingBottom: '12px' }}>1. Authentication</h2>
-            <p style={{ color: 'var(--text-primary)', lineHeight: 1.7, marginBottom: '24px' }}>
-              All requests to the control plane and data plane must be authenticated using your <code style={codeStyle}>PANIC_TOKEN</code>. Pass it via the standard HTTP Authorization header.
+            <h2 style={{ marginTop: 0, fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '24px', borderBottom: '1px solid #333', paddingBottom: '12px' }}>1. Authentication & Security</h2>
+            <p style={{ color: 'var(--text-primary)', lineHeight: 1.7, marginBottom: '16px' }}>
+              Panic Design implements a strict zero-trust dual-key architecture separating Control Plane orchestration from Data Plane execution:
             </p>
+            <ul style={{ color: 'var(--text-secondary)', paddingLeft: '20px', lineHeight: 1.8, fontSize: '0.95rem', margin: 0 }}>
+              <li><strong>Control Plane (Token Minting & M2M API)</strong>: Authenticate with your persistent Developer API Key (<code style={codeStyle}>pd_live_...</code>) via <code style={codeStyle}>Authorization: Bearer pd_live_...</code>.</li>
+              <li><strong>Data Plane (Edge Gateway Ingress)</strong>: Pass the ephemeral chaos JWT via <code style={codeStyle}>X-Chaos-Token: &lt;jwt&gt;</code> (recommended) or <code style={codeStyle}>Authorization: Bearer &lt;jwt&gt;</code>. The gateway validates the token against <code style={codeStyle}>CHAOS_JWT_SECRET</code> and automatically scrubs <code style={codeStyle}>X-Chaos-Token</code> before forwarding to your upstream.</li>
+            </ul>
           </div>
 
           <div id="injection" ref={injectionRef} style={{ minHeight: '800px', scrollMarginTop: '100px' }}>
@@ -100,7 +104,9 @@ export default function Docs() {
                   <td style={{ padding: '16px 0' }}><code style={codeStyle}>fault</code></td>
                   <td style={{ padding: '16px 0', color: '#60a5fa' }}>string</td>
                   <td style={{ padding: '16px 0', color: '#ef4444', fontSize: '0.8rem' }}>required</td>
-                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Fault pattern: <code style={codeStyle}>502</code> Bad Gateway, <code style={codeStyle}>504</code> Gateway Timeout, <code style={codeStyle}>429</code> Rate Limit, or <code style={codeStyle}>latency</code> (Traffic Degradation).</td>
+                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                    Fault pattern: <code style={codeStyle}>502</code> Bad Gateway, <code style={codeStyle}>504</code> Gateway Timeout, <code style={codeStyle}>429</code> Rate Limit, <code style={codeStyle}>444</code> No Response (simulates instant TCP RST / drop without headers), or <code style={codeStyle}>latency</code> (Traffic Degradation).
+                  </td>
                 </tr>
                 <tr style={{ borderBottom: '1px solid #222' }}>
                   <td style={{ padding: '16px 0' }}><code style={codeStyle}>latency</code></td>
@@ -228,10 +234,15 @@ export default function Docs() {
               <td style={{ padding: '20px 24px' }}><code style={codeStyle}>EDGE_ROUTING_FAILED</code></td>
               <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Simulated or real upstream failure during chaotic injection.</td>
             </tr>
-            <tr>
+            <tr style={{ borderBottom: '1px solid #222' }}>
               <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>504 Gateway Timeout</td>
               <td style={{ padding: '20px 24px' }}><code style={codeStyle}>UPSTREAM_TIMEOUT</code></td>
               <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Upstream server failed to respond within the Edge TTL threshold.</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>444 No Response</td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>CONNECTION_CLOSED_WITHOUT_RESPONSE</code></td>
+              <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Simulated instant socket disconnect without sending HTTP response headers or payload.</td>
             </tr>
           </tbody>
         </table>
@@ -281,6 +292,76 @@ curl -s -X POST https://panic.andrewwangdev.com/api/v1/chaos/tokens \\
 # 2. Test Upstream Circuit Breaker via Gateway Ingress
 curl -i -H "X-Chaos-Token: $CHAOS_JWT" \\
   "https://gateway.andrewwangdev.com/v1/checkout"`}
+          </pre>
+        </div>
+
+        {/* 5. Real-Time Audit & Observability Telemetry API */}
+        <div style={{ marginBottom: '80px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <Activity size={28} color="#10b981" />
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fff', margin: 0 }}>5. Real-Time Audit & Observability API</h2>
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7, fontSize: '1rem', marginBottom: '24px' }}>
+            Query your Cloudflare D1 distributed audit logs programmatically for integration with external dashboards, CI/CD telemetry, or SIEM platforms.
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <span style={{ background: '#1e3a8a', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '1px' }}>GET</span>
+            <code style={{ fontFamily: 'var(--font-mono), monospace', color: 'var(--text-primary)', fontSize: '1.1rem' }}>/api/audit/logs</code>
+          </div>
+
+          <h3 style={{ fontSize: '1.2rem', color: 'var(--text-primary)', marginBottom: '16px' }}>Query Parameters</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', marginBottom: '32px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #333', color: 'var(--text-secondary)' }}>
+                <th style={{ padding: '12px 0', fontWeight: 500 }}>Parameter</th>
+                <th style={{ padding: '12px 0', fontWeight: 500 }}>Type</th>
+                <th style={{ padding: '12px 0', fontWeight: 500 }}>Default</th>
+                <th style={{ padding: '12px 0', fontWeight: 500 }}>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: '1px solid #222' }}>
+                <td style={{ padding: '16px 0' }}><code style={codeStyle}>limit</code></td>
+                <td style={{ padding: '16px 0', color: '#60a5fa' }}>integer</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-secondary)' }}>50</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Max records to return (1-100).</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #222' }}>
+                <td style={{ padding: '16px 0' }}><code style={codeStyle}>source</code></td>
+                <td style={{ padding: '16px 0', color: '#60a5fa' }}>string</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-secondary)' }}>ALL</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Filter by ingress origin: <code style={codeStyle}>WEB_DASHBOARD</code>, <code style={codeStyle}>AGENT_API</code>, <code style={codeStyle}>EDGE_INGRESS</code>.</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #222' }}>
+                <td style={{ padding: '16px 0' }}><code style={codeStyle}>fault</code></td>
+                <td style={{ padding: '16px 0', color: '#60a5fa' }}>string</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-secondary)' }}>ALL</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Filter by injected fault: <code style={codeStyle}>latency</code>, <code style={codeStyle}>502</code>, <code style={codeStyle}>504</code>, <code style={codeStyle}>429</code>, <code style={codeStyle}>444</code>.</td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid #222' }}>
+                <td style={{ padding: '16px 0' }}><code style={codeStyle}>target</code></td>
+                <td style={{ padding: '16px 0', color: '#60a5fa' }}>string</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-secondary)' }}>optional</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Case-insensitive target host substring search.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <pre style={{
+            background: '#0a0a0a',
+            border: '1px solid #222',
+            padding: '20px',
+            borderRadius: '12px',
+            fontFamily: 'var(--font-mono), monospace',
+            fontSize: '0.85rem',
+            color: '#a1a1aa',
+            lineHeight: 1.6,
+            overflowX: 'auto'
+          }}>
+{`curl -s "https://panic.andrewwangdev.com/api/audit/logs?limit=10&source=EDGE_INGRESS" \\
+  -H "Authorization: Bearer $PANIC_DESIGN_API_KEY"`}
           </pre>
         </div>
 
