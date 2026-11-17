@@ -255,6 +255,50 @@ export async function POST(req: Request) {
       }
     });
 
+    // Strict post-creation TOCTOU concurrency check (Cap = 5)
+    const postCheckTokens = await prisma.token.findMany({
+      where: {
+        userId: user.id,
+        isRevoked: false
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        config: true
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    let verifiedActive = 0;
+    const postNowMs = Date.now();
+    for (const t of postCheckTokens) {
+      try {
+        const conf = JSON.parse(t.config);
+        const ttlH = conf.ttlHours || conf.ttl || 0.25;
+        const expMs = new Date(t.createdAt).getTime() + (ttlH * 60 * 60 * 1000);
+        if (expMs > postNowMs) {
+          verifiedActive++;
+        }
+      } catch {
+        verifiedActive++;
+      }
+    }
+
+    if (verifiedActive > 5) {
+      await prisma.token.update({
+        where: { id: token.id },
+        data: { isRevoked: true }
+      });
+      if (quotaDeducted && userId) {
+        await refundQuota(userId);
+        quotaDeducted = false;
+      }
+      return NextResponse.json({
+        error: 'CONCURRENT_CAP_EXCEEDED',
+        message: 'Maximum limit of 5 concurrent active tokens reached.'
+      }, { status: 403 });
+    }
+
     // Sign JWT
     const expSeconds = Math.floor(ttlHours * 3600);
     const secret = new TextEncoder().encode(authSecret);
@@ -295,7 +339,7 @@ export async function POST(req: Request) {
       data: {
         userId: user.id,
         targetUrl: cleanHost,
-        injectedFault: fault,
+        injectedFault: 'TOKEN_MINTED',
         source: 'AGENT_API',
         tokenId: token.id,
         tokenHint,
@@ -315,6 +359,7 @@ export async function POST(req: Request) {
       expiresAt: new Date(Date.now() + ttlHours * 3600 * 1000).toISOString(),
       usageExample: `curl -H "X-Chaos-Token: ${jwtToken}" https://gateway.andrewwangdev.com/your-endpoint`,
       activeTokensCount: activeCount + 1,
+      remainingSlots: Math.max(0, 4 - activeCount),
       remainingActiveSlots: Math.max(0, 4 - activeCount)
     });
   } catch (error) {

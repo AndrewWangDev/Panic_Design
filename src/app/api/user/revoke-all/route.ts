@@ -12,6 +12,14 @@ export async function POST(req: Request) {
 
     const prisma = getPrisma();
 
+    // Verify active, non-deleted user
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
+    }
+
     // 1. Increment user's jwtSalt to instantly invalidate all tokens globally
     await prisma.user.update({
       where: { id: session.user.id },

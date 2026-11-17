@@ -7,6 +7,7 @@ export async function checkAndUpdateQuota(userId: string): Promise<{ allowed: bo
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return { allowed: false, reason: 'User not found' };
+    if (user.githubId === null) return { allowed: false, reason: 'Account deleted' };
 
     const now = new Date();
     const lastReset = user.lastQuotaReset || new Date(0);

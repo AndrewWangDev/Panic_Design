@@ -23,6 +23,7 @@ vi.mock('@/lib/prisma', () => ({
     },
     user: {
       findUnique: vi.fn().mockResolvedValue({ jwtSalt: 'salt' }),
+      findFirst: vi.fn().mockResolvedValue({ jwtSalt: 'salt' }),
     },
   }),
 }));

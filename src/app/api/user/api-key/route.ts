@@ -40,6 +40,13 @@ export async function POST() {
     const now = new Date();
 
     const prisma = getPrisma();
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
+    }
+
     await prisma.user.update({
       where: { id: session.user.id },
       data: {

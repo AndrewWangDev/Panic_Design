@@ -38,11 +38,15 @@ export async function GET() {
       }
     }
 
-    // 2. Get quota usage from User table
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    // 2. Get quota usage from User table (verify active account)
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } },
       select: { dailyQuota: true, hourlyQuota: true, lastQuotaReset: true }
     });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
+    }
 
     const now = new Date();
     const lastReset = user?.lastQuotaReset || new Date(0);

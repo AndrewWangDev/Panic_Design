@@ -86,6 +86,12 @@ function formatAuditItemToText(item: AuditLogItem): { text: string; prefixColor:
   } else if (item.injectedFault === '429' || policy?.fault === '429') {
     faultDesc = '429 Rate Limit';
     prefixColor = '#fbbf24';
+  } else if (item.injectedFault === '444' || policy?.fault === '444') {
+    faultDesc = '444 No Response';
+    prefixColor = '#f87171';
+  } else if (item.injectedFault === 'PASSTHROUGH' || item.injectedFault === 'FAIL_OPEN') {
+    faultDesc = 'Policy Passthrough (Fail-Open)';
+    prefixColor = '#10b981';
   } else if (item.injectedFault === 'TOKEN_MINTED') {
     faultDesc = 'Token Minted';
     prefixColor = '#10b981';

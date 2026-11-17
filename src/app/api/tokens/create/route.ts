@@ -146,9 +146,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'CONCURRENT_CAP_EXCEEDED' }, { status: 403 });
     }
 
-    // Fetch latest user salt
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    // Fetch latest user salt (verify active, non-deleted account)
+    const user = await prisma.user.findFirst({
+      where: {
+        id: session.user.id,
+        githubId: { not: null }
+      },
       select: { jwtSalt: true }
     });
 
@@ -157,7 +160,7 @@ export async function POST(req: Request) {
         await refundQuota(userId);
         quotaDeducted = false;
       }
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
     }
 
     // Default TTL is 15 minutes if not specified

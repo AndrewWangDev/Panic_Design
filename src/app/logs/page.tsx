@@ -50,6 +50,8 @@ const FAULT_OPTIONS = [
   { value: '502', label: '502 Bad Gateway' },
   { value: '504', label: '504 Gateway Timeout' },
   { value: '429', label: '429 Rate Limit' },
+  { value: '444', label: '444 No Response' },
+  { value: 'PASSTHROUGH', label: 'Policy Passthrough' },
   { value: 'TOKEN_MINTED', label: 'Token Minted' },
   { value: 'TOKEN_REVOKED', label: 'Token Revoked' },
 ];
@@ -72,6 +74,9 @@ function renderFaultBadges(log: LogItem) {
   }
   if (fault === 'TOKEN_REVOKED') {
     return <span className={styles.badgeNeutral}>Token Revoked</span>;
+  }
+  if (fault === 'PASSTHROUGH' || fault === 'FAIL_OPEN') {
+    return <span className={styles.badgeGreen}>Passthrough</span>;
   }
   if (fault === '502') {
     return <span className={styles.badgeRed}>502 Bad Gateway</span>;
@@ -136,6 +141,9 @@ function getBreakdownBadgeProps(facet: string, count: number) {
     badgeClass = styles.badgeRed;
   } else if (facet === 'TOKEN_MINTED') {
     label = `Minted: ${count}`;
+    badgeClass = styles.badgeGreen;
+  } else if (facet === 'PASSTHROUGH' || facet === 'FAIL_OPEN') {
+    label = `Pass: ${count}`;
     badgeClass = styles.badgeGreen;
   } else if (facet === 'TOKEN_REVOKED') {
     label = `Revoked: ${count}`;

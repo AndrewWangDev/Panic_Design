@@ -169,15 +169,19 @@ export async function GET(req: Request) {
 
         // Construct complete Fault Policy
         const conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;
+        const effectiveFault = (l.injectedFault === 'PASSTHROUGH' || l.injectedFault === 'FAIL_OPEN') 
+          ? l.injectedFault 
+          : (conf?.fault || l.injectedFault);
+
         const faultPolicy = conf ? {
-          fault: conf.fault || l.injectedFault,
+          fault: effectiveFault,
           latency: typeof conf.latency === 'number' ? conf.latency : (l.latencyMs ?? 0),
           jitter: typeof conf.jitter === 'number' ? conf.jitter : 0,
           packetLoss: typeof conf.packetLoss === 'number' ? conf.packetLoss : 0,
           distribution: conf.distribution || 'Normal',
           mutilationStrategy: conf.mutilationStrategy || 'None'
         } : {
-          fault: l.injectedFault,
+          fault: effectiveFault,
           latency: l.latencyMs ?? 0,
           jitter: 0,
           packetLoss: 0,
