@@ -34,6 +34,7 @@
   --text-primary: var(--color-text-primary-dark);
   --text-secondary: var(--color-text-secondary-dark);
   --navbar-bg: rgba(10, 10, 12, 0.95);
+  color-scheme: dark;
 }
 
 [data-theme='light'] {
@@ -43,6 +44,19 @@
   --text-primary: var(--color-text-primary-light);
   --text-secondary: var(--color-text-secondary-light);
   --navbar-bg: rgba(255, 255, 255, 0.95);
+  color-scheme: light;
+}
+
+/* Global Reset: Eliminate native spinner arrows from all number inputs */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
 }
 
 * {
