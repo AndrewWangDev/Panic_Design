@@ -5,11 +5,14 @@ import { auth } from '@/auth';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  let quotaDeducted = false;
+  let userId: string | null = null;
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    userId = session.user.id;
 
     const { getPrisma } = await import('@/lib/prisma');
     const prisma = getPrisma();
@@ -80,6 +83,7 @@ export async function POST(req: Request) {
         insight: null 
       }, { status: 429 });
     }
+    quotaDeducted = true;
 
     const systemPrompt = `You are a strict AIOps Chaos Engineering Engine. Output MUST be ONLY valid JSON.
 Baseline Telemetry:
@@ -206,6 +210,14 @@ Analysis: 'trans-Pacific' is a keyword. Immediately check if w1_colo, w2_colo, a
 
   } catch (error: any) {
     console.error('AI Ops Error:', error);
+    if (quotaDeducted && userId) {
+      try {
+        const { refundQuota } = await import('@/lib/quota');
+        await refundQuota(userId);
+      } catch (refundErr) {
+        console.warn('Failed to refund quota on error:', refundErr);
+      }
+    }
     return NextResponse.json({ error: 'Internal server error while processing AIOps request' }, { status: 500 });
   }
 }

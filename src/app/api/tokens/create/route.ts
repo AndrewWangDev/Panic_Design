@@ -252,7 +252,7 @@ export async function POST(req: Request) {
       if (address) {
         // Get geo coordinates
         const geoRes = await fetch(`https://ipapi.co/${address}/json/`, {
-          signal: AbortSignal.timeout(3000)
+          signal: AbortSignal.timeout(800)
         });
         const geoData = await geoRes.json() as any;
         if (geoData && typeof geoData.longitude === 'number' && typeof geoData.latitude === 'number') {
