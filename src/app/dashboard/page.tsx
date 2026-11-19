@@ -799,11 +799,11 @@ const AiAutofillModal = ({
 
         <div style={{ padding: '20px' }}>
           <textarea
+            className={styles.aiModalTextarea}
             placeholder="E.g., Inject 200ms latency and 5% packet loss for Asia region..."
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
             disabled={status === 'loading' || status === 'turnstile'}
-            style={{ width: '100%', height: '100px', background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '12px', color: '#f8fafc', fontFamily: 'var(--font-sans)', fontSize: '14px', resize: 'none', marginBottom: '16px' }}
           />
 
           {status === 'turnstile' && (
@@ -2143,7 +2143,7 @@ export default function Dashboard() {
                             handleAiSubmit();
                           }
                         }}
-                        style={{ maxHeight: '120px', overflowY: 'auto' }}
+                        style={{ maxHeight: '120px' }}
                       />
                       <button 
                         className={styles.aiSendBtn} 

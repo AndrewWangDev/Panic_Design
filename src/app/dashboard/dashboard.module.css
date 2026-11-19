@@ -266,7 +266,54 @@
   height: auto;
   min-height: 24px;
   font-family: inherit;
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.aiInput::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.aiModalTextarea {
+  width: 100%;
+  height: 100px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 12px;
+  color: #f8fafc;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  resize: none;
+  margin-bottom: 16px;
+  outline: none;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.aiModalTextarea:focus {
+  border-color: #38bdf8;
+}
+
+.aiModalTextarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.aiModalTextarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.aiModalTextarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+.aiModalTextarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .aiInput::placeholder {
@@ -440,6 +487,14 @@
   font-size: 1rem;
   text-align: center;
   transition: border-color var(--transition-fast);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.ttlCustomInput::-webkit-outer-spin-button,
+.ttlCustomInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .ttlCustomInput:focus {
@@ -1083,6 +1138,14 @@
   font-size: 0.9rem;
   outline: none;
   text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.latencyInput::-webkit-outer-spin-button,
+.latencyInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .latencyInput:focus {
