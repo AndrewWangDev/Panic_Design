@@ -4,6 +4,20 @@ import React from 'react';
 
 const releases = [
   {
+    version: "v2.1.0 - Multi-Ecosystem Agent Skills, Deep Security Hardening & Zero-Blemish Edge UI",
+    date: "November 19, 2026",
+    changes: [
+      { type: "Feature", text: "Launched Multi-Ecosystem AI Agent Skill Integration (\"Add to Cursor / Codex\") featuring one-click install specifications for Cursor (.cursor/rules), Claude Code / Codex, and Antigravity, alongside globally edge-cached raw SKILL.md delivery (/SKILL.md)." },
+      { type: "Feature", text: "Shipped end-to-end telemetry observability for 444 No Response, Fail-Open (PASSTHROUGH) bypasses, and multi-faceted fault breakdowns (latency, jitter, packet loss, payload corruption) across logs console and real-time topology map." },
+      { type: "Security", text: "Enforced strict account deletion lifecycle validation (githubId: { not: null }) across all protected API routes and quota allocators, neutralizing ghost session reuse on stateless JWT cookies (SEC-01)." },
+      { type: "Security", text: "Implemented M2M active token concurrency TOCTOU double-check, strictly enforcing the 5-token cap under distributed race conditions (SEC-02)." },
+      { type: "Security", text: "Hardened Gateway data plane with in-memory revocation micro-caching (5s TTL) to shield Cloudflare D1 from lock contention, case-insensitive Bearer parsing, and full CORS preflight handling (SEC-03, SEC-08, SEC-15)." },
+      { type: "Security", text: "Sanitized sensitive credentials from DoH target URLs and standardized wrangler.example.toml while isolating production D1 database UUIDs in .gitignore (SEC-10, SEC-11)." },
+      { type: "Bugfix", text: "Eliminated Windows Chromium native spin button steppers and subpixel scrollbar artifacts across AIOps What-If simulation and parameter inputs via global CSS reset and bespoke dark scrollbar styling." },
+      { type: "Bugfix", text: "Added atomic quota refund protection (refundQuota) upon edge probe test failures to prevent false-positive credit deductions (SEC-13)." }
+    ]
+  },
+  {
     version: "v2.0.0 - Enterprise AI Agent M2M Ingress, Payload Mutilation & Zero-Trust Edge Architecture",
     date: "November 2026",
     changes: [

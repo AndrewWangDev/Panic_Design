@@ -52,6 +52,7 @@ next-env.d.ts
 .wrangler/
 .wrangler
 wrangler.toml
+!wrangler.example.toml
 
 # Temporary dumps and scripts
 ec2.txt
