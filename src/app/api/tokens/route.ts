@@ -11,6 +11,13 @@ export async function GET() {
     }
 
     const prisma = getPrisma();
+
+    const activeUser = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!activeUser) {
+      return NextResponse.json({ error: 'Unauthorized: Account deleted' }, { status: 401 });
+    }
     
     const dbTokens = await prisma.token.findMany({
       where: { userId: session.user.id },

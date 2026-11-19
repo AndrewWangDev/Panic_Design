@@ -114,6 +114,62 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     expect(mockTokenCreate).not.toHaveBeenCalled();
   });
 
+  it('filters out expired tokens from activeTokens list in 403 response', async () => {
+    const tokens = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `tok_active_${i}`,
+        tokenHint: `hint_active_${i}`,
+        createdAt: new Date().toISOString(),
+        config: JSON.stringify({ ttlHours: 1 })
+      })),
+      {
+        id: 'tok_expired_old',
+        tokenHint: 'hint_expired',
+        createdAt: new Date(Date.now() - 3600 * 1000 * 24).toISOString(), // 24h ago
+        config: JSON.stringify({ ttlHours: 1 }) // Expired
+      }
+    ];
+    mockTokenFindMany.mockResolvedValueOnce(tokens);
+
+    const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer pd_live_test',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ targetHost: 'example.com', fault: '502' })
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBe('CONCURRENT_CAP_EXCEEDED');
+    expect(json.activeTokens.length).toBe(5);
+    expect(json.activeTokens.some((t: any) => t.id === 'tok_expired_old')).toBe(false);
+  });
+
+  it('rejects when jitter exceeds latency for latency fault in M2M API', async () => {
+    const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer pd_live_test',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetHost: 'example.com',
+        fault: 'latency',
+        latency: 50,
+        jitter: 150
+      })
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('INVALID_PARAMETERS');
+    expect(json.message).toBe('Jitter cannot exceed base latency.');
+  });
+
   it('mints JWT token and records audit log when valid', async () => {
     const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
     const req = new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {

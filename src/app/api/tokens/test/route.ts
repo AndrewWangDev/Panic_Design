@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     let payload: any;
     try {
       const secret = new TextEncoder().encode(authSecret);
-      const verified = await jwtVerify(token, secret);
+      const verified = await jwtVerify(token, secret, { algorithms: ['HS256'] });
       payload = verified.payload;
     } catch {
       return NextResponse.json({
@@ -127,8 +127,8 @@ export async function POST(req: Request) {
     let t3 = 0;
 
     if (hdrW1) w1 = hdrW1.split(',').map(Number);
-    if (hdrT2) t2 = Number(hdrT2);
-    if (hdrT3) t3 = Number(hdrT3);
+    if (hdrT2) t2 = Math.max(0, Number(hdrT2) || 0);
+    if (hdrT3) t3 = Math.max(0, Number(hdrT3) || 0);
 
     // Fallbacks if data plane headers are missing
     if (!hdrW1) w1 = [-118.2437, 34.0522]; // Mock CF LAX

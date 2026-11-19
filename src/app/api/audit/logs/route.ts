@@ -10,7 +10,13 @@ export async function GET(req: Request) {
     // Dual-Auth: Check Web session first, then API Key
     const session = await auth();
     if (session?.user?.id) {
-      userId = session.user.id;
+      const prisma = getPrisma();
+      const activeUser = await prisma.user.findFirst({
+        where: { id: session.user.id, githubId: { not: null } }
+      });
+      if (activeUser) {
+        userId = activeUser.id;
+      }
     } else {
       const apiKeyUser = await authenticateApiKey(req.headers.get('authorization'));
       if (apiKeyUser) {
