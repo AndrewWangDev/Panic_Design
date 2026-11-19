@@ -51,9 +51,11 @@ AUTH_SECRET="your-32-byte-hex-random-secret"
 AUTH_CLIENT_ID="your-github-oauth-client-id"
 AUTH_CLIENT_SECRET="your-github-oauth-client-secret"
 TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+CHAOS_JWT_SECRET="your-32-byte-hex-token-signing-secret"
 ```
 
-> **Note**: Never commit `.dev.vars` or secrets to git. The repository `.gitignore` is configured to prevent accidental leakage.
+> **Critical**: `CHAOS_JWT_SECRET` (or `AUTH_SECRET` if `CHAOS_JWT_SECRET` is unset) is the shared symmetric HS256 secret used to sign Chaos Tokens. It must match the `CHAOS_JWT_SECRET` / `AUTH_SECRET` configured in the Data Plane (`Panic_Design_Gateway`), otherwise edge gateway token validation will fail with 401.
+> **Note**: Never commit `.dev.vars`, `.env.local` or secrets to git. The repository `.gitignore` is configured to prevent accidental leakage.
 
 ### 3. Initialize Local D1 Database
 

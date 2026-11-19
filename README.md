@@ -64,13 +64,13 @@ panic.design utilizes a completely **Control Plane & Data Plane separated**, clo
 
 #### 1. Control Plane Setup (`panic_design`)
 1. Clone this repository: `git clone https://github.com/AndrewWangDev/panic_design.git`
-2. Configure `.dev.vars` (or Cloudflare Worker secrets via `wrangler secret put`): `AUTH_SECRET`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`, `TURNSTILE_SECRET_KEY`.
+2. Configure `.dev.vars` (or Cloudflare Worker secrets via `wrangler secret put`): `AUTH_SECRET`, `CHAOS_JWT_SECRET`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`, `TURNSTILE_SECRET_KEY`.
 3. Initialize the D1 schema: `npx wrangler d1 execute DB --local --file=./prisma/schema.sql`.
 4. Run locally: `npm run dev` or deploy via `npm run build && npx wrangler deploy`.
 
 #### 2. Data Plane Setup (`Panic_Design_Gateway`)
 1. Clone the Data Plane repository: `git clone https://github.com/AndrewWangDev/Panic_Design_Gateway.git`
-2. Bind the shared D1 database (`panic_design`) and `AUTH_SECRET` in `wrangler.toml`.
+2. Configure `.dev.vars` / secrets with matching `CHAOS_JWT_SECRET` / `AUTH_SECRET`, and bind the shared D1 database (`panic_design`) in `wrangler.toml`.
 3. Deploy the gateway Worker: `npx wrangler deploy`.
 
 ---
