@@ -5,11 +5,14 @@ import { auth } from '@/auth';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  let quotaDeducted = false;
+  let userId: string | null = null;
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    userId = session.user.id;
 
     const { getPrisma } = await import('@/lib/prisma');
     const prisma = getPrisma();
@@ -67,6 +70,7 @@ export async function POST(req: Request) {
     if (!quota.allowed) {
       return NextResponse.json({ status: 'error', error_message: 'QUOTA_EXCEEDED: ' + quota.reason, data: null }, { status: 429 });
     }
+    quotaDeducted = true;
 
     const systemPrompt = `You are a strict Chaos Engineering Form AutoFill Engine. 
 The user is instructing you to configure a cloud network fault. You will output a strict JSON configuration based on their instruction.
@@ -156,6 +160,14 @@ The JSON MUST follow this exact schema:
 
   } catch (error: any) {
     console.error('AI Ops AutoFill Error:', error);
+    if (quotaDeducted && userId) {
+      try {
+        const { refundQuota } = await import('@/lib/quota');
+        await refundQuota(userId);
+      } catch (refundErr) {
+        console.warn('Failed to refund quota on error:', refundErr);
+      }
+    }
     return NextResponse.json(
       { error: 'Internal server error while evaluating chaos intent parameters' },
       { status: 500 }

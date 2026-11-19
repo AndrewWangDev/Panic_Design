@@ -21,7 +21,8 @@ export async function GET() {
     
     const dbTokens = await prisma.token.findMany({
       where: { userId: session.user.id },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: 50
     });
 
     const now = Date.now();

@@ -67,6 +67,7 @@ export async function GET(req: Request) {
       prisma.chaosLog.findMany({
         where: { userId },
         select: { injectedFault: true, targetUrl: true, tokenId: true, latencyMs: true },
+        orderBy: { executedAt: 'desc' },
         take: 500
       })
     ]);
@@ -80,14 +81,18 @@ export async function GET(req: Request) {
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
       try {
-        const tokens = await prisma.token.findMany({
-          where: { id: { in: tokenIds } },
-          select: { id: true, config: true }
-        });
-        for (const t of tokens) {
-          try {
-            tokenConfigMap[t.id] = JSON.parse(t.config);
-          } catch {}
+        const chunkSize = 100;
+        for (let i = 0; i < tokenIds.length; i += chunkSize) {
+          const chunk = tokenIds.slice(i, i + chunkSize);
+          const tokens = await prisma.token.findMany({
+            where: { id: { in: chunk } },
+            select: { id: true, config: true }
+          });
+          for (const t of tokens) {
+            try {
+              tokenConfigMap[t.id] = JSON.parse(t.config);
+            } catch {}
+          }
         }
       } catch (tokenErr) {
         console.warn('Failed to batch query token configs for logs:', tokenErr);
@@ -104,10 +109,11 @@ export async function GET(req: Request) {
 
     for (const item of allUserLogs) {
       const conf = (item.tokenId && tokenConfigMap[item.tokenId]) || null;
-      const primaryFault = conf?.fault || item.injectedFault;
+      const isMeta = ['PASSTHROUGH', 'FAIL_OPEN', 'TOKEN_MINTED', 'TOKEN_REVOKED'].includes(item.injectedFault);
+      const primaryFault = isMeta ? item.injectedFault : (conf?.fault || item.injectedFault);
 
       // 1. Primary fault pattern
-      if (primaryFault === 'latency' || (item.latencyMs && item.latencyMs > 0)) {
+      if (primaryFault === 'latency' || (item.latencyMs && item.latencyMs > 0 && !isMeta)) {
         addFaultFacet('latency');
       } else if (primaryFault) {
         addFaultFacet(primaryFault);
@@ -175,7 +181,8 @@ export async function GET(req: Request) {
 
         // Construct complete Fault Policy
         const conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;
-        const effectiveFault = (l.injectedFault === 'PASSTHROUGH' || l.injectedFault === 'FAIL_OPEN') 
+        const isMetaFault = ['PASSTHROUGH', 'FAIL_OPEN', 'TOKEN_MINTED', 'TOKEN_REVOKED'].includes(l.injectedFault);
+        const effectiveFault = isMetaFault 
           ? l.injectedFault 
           : (conf?.fault || l.injectedFault);
 

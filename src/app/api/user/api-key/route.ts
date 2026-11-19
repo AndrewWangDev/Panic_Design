@@ -11,15 +11,18 @@ export async function GET() {
     }
 
     const prisma = getPrisma();
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } },
       select: { apiKeyPrefix: true, apiKeyCreatedAt: true }
     });
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: Account deleted' }, { status: 401 });
+    }
 
     return NextResponse.json({
-      hasKey: !!user?.apiKeyPrefix,
-      prefix: user?.apiKeyPrefix || null,
-      createdAt: user?.apiKeyCreatedAt ? user.apiKeyCreatedAt.toISOString() : null
+      hasKey: !!user.apiKeyPrefix,
+      prefix: user.apiKeyPrefix || null,
+      createdAt: user.apiKeyCreatedAt ? user.apiKeyCreatedAt.toISOString() : null
     });
   } catch (error) {
     console.error('Fetch API Key Error:', error);
@@ -78,6 +81,13 @@ export async function DELETE() {
     }
 
     const prisma = getPrisma();
+    const user = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: Account deleted' }, { status: 401 });
+    }
+
     await prisma.user.update({
       where: { id: session.user.id },
       data: {

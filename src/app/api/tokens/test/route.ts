@@ -79,8 +79,47 @@ export async function POST(req: Request) {
       });
       status = res.status;
       statusText = res.statusText;
-      responseBody = await res.text();
       resHeaders = res.headers;
+
+      // Stream read up to 64KB to prevent Worker OOM on large upstream responses (ISSUE-04)
+      const MAX_PREVIEW_BYTES = 64 * 1024;
+      if (res.body) {
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
+        let isTruncated = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            if (totalBytes + value.length > MAX_PREVIEW_BYTES) {
+              const remaining = MAX_PREVIEW_BYTES - totalBytes;
+              if (remaining > 0) chunks.push(value.slice(0, remaining));
+              totalBytes += remaining;
+              isTruncated = true;
+              await reader.cancel();
+              break;
+            }
+            chunks.push(value);
+            totalBytes += value.length;
+          }
+        }
+
+        const decoder = new TextDecoder('utf-8');
+        const fullBuffer = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          fullBuffer.set(chunk, offset);
+          offset += chunk.length;
+        }
+        responseBody = decoder.decode(fullBuffer);
+        if (isTruncated) {
+          responseBody += '\n... [Response body truncated: exceeded 64KB preview limit]';
+        }
+      } else {
+        responseBody = '';
+      }
     } catch (e: any) {
       console.error('Data Plane probe failed:', e);
       status = 503;
@@ -143,7 +182,7 @@ export async function POST(req: Request) {
         const address = await resolveHostIp(payload.targetHost);
         if (address && !isPrivateIp(address)) {
           const geoRes = await fetch(`https://ipapi.co/${address}/json/`, {
-            signal: AbortSignal.timeout(3000)
+            signal: AbortSignal.timeout(800)
           });
           const geoData = await geoRes.json() as { longitude?: number; latitude?: number };
           if (geoData && typeof geoData.longitude === 'number' && typeof geoData.latitude === 'number') {

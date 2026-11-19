@@ -77,7 +77,16 @@ function formatAuditItemToText(item: AuditLogItem): { text: string; prefixColor:
   let prefixColor = '#38bdf8';
 
   const policy = item.faultPolicy;
-  if (item.injectedFault === '502' || policy?.fault === '502') {
+  if (item.injectedFault === 'TOKEN_MINTED') {
+    faultDesc = 'Token Minted';
+    prefixColor = '#10b981';
+  } else if (item.injectedFault === 'TOKEN_REVOKED') {
+    faultDesc = 'Token Revoked';
+    prefixColor = '#94a3b8';
+  } else if (item.injectedFault === 'PASSTHROUGH' || item.injectedFault === 'FAIL_OPEN') {
+    faultDesc = 'Policy Passthrough (Fail-Open)';
+    prefixColor = '#10b981';
+  } else if (item.injectedFault === '502' || policy?.fault === '502') {
     faultDesc = '502 Bad Gateway';
     prefixColor = '#f87171';
   } else if (item.injectedFault === '504' || policy?.fault === '504') {
@@ -89,15 +98,6 @@ function formatAuditItemToText(item: AuditLogItem): { text: string; prefixColor:
   } else if (item.injectedFault === '444' || policy?.fault === '444') {
     faultDesc = '444 No Response';
     prefixColor = '#f87171';
-  } else if (item.injectedFault === 'PASSTHROUGH' || item.injectedFault === 'FAIL_OPEN') {
-    faultDesc = 'Policy Passthrough (Fail-Open)';
-    prefixColor = '#10b981';
-  } else if (item.injectedFault === 'TOKEN_MINTED') {
-    faultDesc = 'Token Minted';
-    prefixColor = '#10b981';
-  } else if (item.injectedFault === 'TOKEN_REVOKED') {
-    faultDesc = 'Token Revoked';
-    prefixColor = '#94a3b8';
   } else if (item.injectedFault === 'latency' || policy?.fault === 'latency') {
     const lat = policy?.latency ?? item.latencyMs;
     const jit = policy?.jitter ?? 0;
