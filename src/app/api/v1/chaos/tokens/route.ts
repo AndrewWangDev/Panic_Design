@@ -138,6 +138,9 @@ export async function POST(req: Request) {
     if (typeof jitter !== 'number' || !Number.isFinite(jitter) || jitter < 0 || jitter > 10000) {
       return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Jitter must be between 0 and 10000 ms.' }, { status: 400 });
     }
+    if (fault === 'latency' && jitter > latency) {
+      return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Jitter cannot exceed base latency.' }, { status: 400 });
+    }
     if (typeof packetLoss !== 'number' || !Number.isFinite(packetLoss) || packetLoss < 0 || packetLoss > 100) {
       return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Packet loss must be between 0 and 100%.' }, { status: 400 });
     }
@@ -186,14 +189,19 @@ export async function POST(req: Request) {
 
     let activeCount = 0;
     const nowMs = Date.now();
+    const trulyActiveTokens: Array<{ id: string; hint: string | null }> = [];
     for (const t of unrevokedTokens) {
       try {
         const conf = JSON.parse(t.config);
         const tTtl = conf.ttlHours || conf.ttl || 0.25;
         const exp = new Date(t.createdAt).getTime() + tTtl * 3600 * 1000;
-        if (exp > nowMs) activeCount++;
+        if (exp > nowMs) {
+          activeCount++;
+          trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
+        }
       } catch {
         activeCount++;
+        trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
       }
     }
 
@@ -201,7 +209,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         error: 'CONCURRENT_CAP_EXCEEDED',
         message: 'Account active token limit reached (5 tokens max). Revoke an existing token with DELETE /api/v1/chaos/tokens/:id before creating a new one.',
-        activeTokens: unrevokedTokens.map(t => ({ id: t.id, hint: t.tokenHint }))
+        activeTokens: trulyActiveTokens
       }, { status: 403 });
     }
 

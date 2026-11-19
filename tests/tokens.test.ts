@@ -186,4 +186,26 @@ describe('POST /api/tokens/create validation & pre-flight SSRF guards', () => {
     expect(mockTokenCreate).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  it('rejects when jitter exceeds latency for latency fault', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user-valid' } });
+    const { POST } = await import('../src/app/api/tokens/create/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        targetHost: 'api.example.com',
+        fault: 'latency',
+        latency: 100,
+        jitter: 200,
+        distribution: 'Uniform',
+        turnstileToken: 'tok',
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('INVALID_PARAMETERS');
+    expect(data.message).toBe('Jitter cannot exceed base latency.');
+  });
 });

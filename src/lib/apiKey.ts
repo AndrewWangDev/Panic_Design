@@ -31,10 +31,7 @@ export function extractApiKeyPrefix(rawKey: string): string {
 export async function authenticateApiKey(authHeaderOrKey: string | null): Promise<{ id: string; username: string | null; email: string | null } | null> {
   if (!authHeaderOrKey) return null;
 
-  let rawKey = authHeaderOrKey.trim();
-  if (rawKey.startsWith('Bearer ')) {
-    rawKey = rawKey.slice(7).trim();
-  }
+  let rawKey = authHeaderOrKey.trim().replace(/^Bearer\s+/i, '').trim();
 
   if (!rawKey.startsWith('pd_live_') || rawKey.length < 24) {
     return null;

@@ -5,6 +5,7 @@ const mockAuthenticateApiKey = vi.fn();
 const mockChaosLogFindMany = vi.fn();
 const mockChaosLogCount = vi.fn();
 const mockTokenFindMany = vi.fn();
+const mockUserFindFirst = vi.fn();
 
 vi.mock('@/auth', () => ({
   auth: () => mockAuth()
@@ -22,6 +23,9 @@ vi.mock('@/lib/prisma', () => ({
     },
     token: {
       findMany: mockTokenFindMany
+    },
+    user: {
+      findFirst: mockUserFindFirst
     }
   })
 }));
@@ -29,11 +33,22 @@ vi.mock('@/lib/prisma', () => ({
 describe('Audit Logs API (GET /api/audit/logs)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserFindFirst.mockResolvedValue({ id: 'user_session_1', githubId: 'gh_1' });
   });
 
   it('rejects unauthenticated requests with 401', async () => {
     mockAuth.mockResolvedValueOnce(null);
     mockAuthenticateApiKey.mockResolvedValueOnce(null);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs');
+    const res = await GET(req);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects deleted user session (githubId: null) with 401', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'deleted_user' } });
+    mockUserFindFirst.mockResolvedValueOnce(null); // No active user with githubId not null
 
     const { GET } = await import('../src/app/api/audit/logs/route');
     const req = new Request('https://panic.andrewwangdev.com/api/audit/logs');

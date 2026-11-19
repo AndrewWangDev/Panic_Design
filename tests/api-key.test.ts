@@ -69,4 +69,21 @@ describe('Developer API Key System', () => {
       select: { id: true, username: true, email: true }
     });
   });
+
+  it('supports case-insensitive Bearer scheme per RFC 6750 (bearer / BEARER)', async () => {
+    const rawKey = 'pd_live_validkey123456789012345678901234';
+    mockFindUnique.mockResolvedValue({
+      id: 'user_dev_123',
+      username: 'dev_user',
+      email: 'dev@example.com'
+    });
+
+    const userLower = await authenticateApiKey(`bearer ${rawKey}`);
+    expect(userLower).not.toBeNull();
+    expect(userLower?.id).toBe('user_dev_123');
+
+    const userUpper = await authenticateApiKey(`BEARER ${rawKey}`);
+    expect(userUpper).not.toBeNull();
+    expect(userUpper?.id).toBe('user_dev_123');
+  });
 });

@@ -60,6 +60,11 @@ export async function POST(req: Request) {
     if (jitter !== undefined && (typeof jitter !== 'number' || !Number.isFinite(jitter) || jitter < 0 || jitter > 10000)) {
       return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Jitter must be between 0 and 10000 ms.' }, { status: 400 });
     }
+    const effLatency = typeof latency === 'number' ? latency : 50;
+    const effJitter = typeof jitter === 'number' ? jitter : 0;
+    if (fault === 'latency' && effJitter > effLatency) {
+      return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Jitter cannot exceed base latency.' }, { status: 400 });
+    }
     if (packetLoss !== undefined && (typeof packetLoss !== 'number' || !Number.isFinite(packetLoss) || packetLoss < 0 || packetLoss > 100)) {
       return NextResponse.json({ error: 'INVALID_PARAMETERS', message: 'Packet loss must be between 0 and 100%.' }, { status: 400 });
     }
