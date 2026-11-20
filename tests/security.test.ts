@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps } from '../src/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps, isValidIpv6, parseIpv6Words } from '../src/lib/security';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -40,8 +40,11 @@ describe('Security: isPrivateIp (SSRF defense)', () => {
     expect(isPrivateIp('[::1]')).toBe(true);
   });
 
-  it('should block IPv4-mapped IPv6 in compressed and uncompressed formats', () => {
+  it('should block IPv4-mapped and IPv4-compatible IPv6 in compressed and uncompressed formats', () => {
     expect(isPrivateIp('::ffff:127.0.0.1')).toBe(true);
+    expect(isPrivateIp('::127.0.0.1')).toBe(true);
+    expect(isPrivateIp('::192.168.1.1')).toBe(true);
+    expect(isPrivateIp('::10.0.0.1')).toBe(true);
     expect(isPrivateIp('0:0:0:0:0:ffff:127.0.0.1')).toBe(true);
     expect(isPrivateIp('0000:0000:0000:0000:0000:ffff:7f00:0001')).toBe(true);
     expect(isPrivateIp('::ffff:169.254.169.254')).toBe(true);
@@ -63,6 +66,9 @@ describe('Security: isPrivateIp (SSRF defense)', () => {
     expect(isPrivateIp('8.8.8.8')).toBe(false);
     expect(isPrivateIp('104.21.5.19')).toBe(false);
     expect(isPrivateIp('2606:4700:4700::1111')).toBe(false);
+    expect(isPrivateIp('::1.1.1.1')).toBe(false);
+    expect(isValidIpv6('::1.1.1.1')).toBe(true);
+    expect(parseIpv6Words('::1.1.1.1')).toEqual([0, 0, 0, 0, 0, 0, 257, 257]);
   });
 });
 

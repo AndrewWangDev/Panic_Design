@@ -170,4 +170,63 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
       'Unexpected EOF': 1
     });
   });
+
+  it('maintains stable summary metrics across pagination without drift (NEW-02 regression test)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    // Simulate page 2 where visible logs have NO tokenId (or different tokenId)
+    mockChaosLogFindMany
+      .mockResolvedValueOnce([
+        {
+          id: 'log_page2',
+          source: 'DIRECT_DATA_PLANE',
+          targetUrl: 'https://other.example.com',
+          injectedFault: 'PASSTHROUGH',
+          tokenId: null,
+          tokenHint: null,
+          edgeColo: 'FRA',
+          statusCode: 200,
+          latencyMs: 10,
+          rayId: 'ray_p2',
+          executedAt: new Date()
+        }
+      ])
+      // allUserLogs still has tok_combo from earlier
+      .mockResolvedValueOnce([
+        {
+          injectedFault: 'latency',
+          targetUrl: 'https://api.example.com',
+          tokenId: 'tok_combo',
+          latencyMs: 1200
+        }
+      ]);
+    mockChaosLogCount.mockResolvedValue(100);
+    mockTokenFindMany.mockResolvedValueOnce([
+      {
+        id: 'tok_combo',
+        config: JSON.stringify({
+          fault: 'latency',
+          latency: 1200,
+          jitter: 250,
+          packetLoss: 10,
+          distribution: 'Pareto',
+          mutilationStrategy: 'Garbage Injection'
+        })
+      }
+    ]);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs?page=2&limit=25');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    // Verifies that tok_combo was resolved from allUserLogs even though page 2 logs had no tokenId!
+    expect(json.summary.faultCounts).toEqual({
+      latency: 1,
+      jitter: 1,
+      drop: 1,
+      'Pareto': 1,
+      'Garbage Injection': 1
+    });
+  });
 });
