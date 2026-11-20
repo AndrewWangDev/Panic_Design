@@ -82,8 +82,11 @@ export async function GET(req: Request) {
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
       try {
+        // Query by id in batch when under 100, or directly by userId index when exceeding 100 to eliminate any truncation
         const tokens = await prisma.token.findMany({
-          where: { id: { in: tokenIds.slice(0, 100) } },
+          where: tokenIds.length <= 100
+            ? { id: { in: tokenIds } }
+            : { userId },
           select: { id: true, config: true }
         });
         for (const t of tokens) {
@@ -164,8 +167,13 @@ export async function GET(req: Request) {
         const cleanTarget = l.targetUrl || '';
         const cleanTokenHint = l.tokenHint || '';
 
-        // Construct complete Fault Policy
-        const conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;
+        // Construct complete Fault Policy with relation config fallback
+        let conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;
+        if (!conf && (l as any).token?.config) {
+          try {
+            conf = JSON.parse((l as any).token.config);
+          } catch {}
+        }
         const isMetaFault = ['PASSTHROUGH', 'FAIL_OPEN', 'TOKEN_MINTED', 'TOKEN_REVOKED'].includes(l.injectedFault);
         const effectiveFault = isMetaFault 
           ? l.injectedFault 

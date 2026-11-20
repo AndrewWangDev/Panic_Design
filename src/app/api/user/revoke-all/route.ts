@@ -20,22 +20,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
     }
 
-    // 1. Increment user's jwtSalt to instantly invalidate all tokens globally
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { jwtSalt: { increment: 1 } }
-    });
-
-    // 2. Mark all active tokens as revoked in DB for UI consistency
-    await prisma.token.updateMany({
-      where: {
-        userId: session.user.id,
-        isRevoked: false
-      },
-      data: {
-        isRevoked: true
-      }
-    });
+    // Atomically increment user's jwtSalt and mark all active tokens as revoked in D1 batch transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: session.user.id },
+        data: { jwtSalt: { increment: 1 } }
+      }),
+      prisma.token.updateMany({
+        where: {
+          userId: session.user.id,
+          isRevoked: false
+        },
+        data: {
+          isRevoked: true
+        }
+      })
+    ]);
 
     // Record Global Revocation Audit Log
     const rayHeader = req.headers.get('cf-ray') || '';
