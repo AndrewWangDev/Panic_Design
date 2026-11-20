@@ -72,8 +72,12 @@ export async function GET(req: Request) {
       })
     ]);
 
-    // Batch resolve Token configurations only for the visible logs page to avoid N+1 D1 queries and high CPU
-    const allTokenIdCandidates = logs.map(l => l.tokenId).filter((id): id is string => Boolean(id));
+    // Batch resolve Token configurations for allUserLogs and visible logs to avoid N+1 D1 queries
+    // while ensuring aggregated summary KPI metrics do not drift when paging (NEW-02 fix)
+    const allTokenIdCandidates = [
+      ...allUserLogs.map(l => l.tokenId),
+      ...logs.map(l => l.tokenId)
+    ].filter((id): id is string => Boolean(id));
     const tokenIds = Array.from(new Set(allTokenIdCandidates));
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
