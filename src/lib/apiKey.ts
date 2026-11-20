@@ -3,11 +3,18 @@ import { getPrisma } from '@/lib/prisma';
 const CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 export function generateRawApiKey(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
+  // 62 * 4 = 248. Discard random bytes >= 248 to eliminate modulo bias across 0..61.
+  const charsLen = CHARS.length;
+  const maxValidByte = 256 - (256 % charsLen); // 248
   let str = '';
-  for (let i = 0; i < bytes.length; i++) {
-    str += CHARS[bytes[i] % CHARS.length];
+  while (str.length < 32) {
+    const bytes = new Uint8Array(48);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < bytes.length && str.length < 32; i++) {
+      if (bytes[i] < maxValidByte) {
+        str += CHARS[bytes[i] % charsLen];
+      }
+    }
   }
   return `pd_live_${str}`;
 }

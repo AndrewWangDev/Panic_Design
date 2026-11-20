@@ -72,27 +72,20 @@ export async function GET(req: Request) {
       })
     ]);
 
-    // Batch resolve Token configurations for rich Fault Policy badging & multi-faceted breakdown
-    const allTokenIdCandidates = [
-      ...logs.map(l => l.tokenId),
-      ...allUserLogs.map(l => l.tokenId)
-    ].filter((id): id is string => Boolean(id));
+    // Batch resolve Token configurations only for the visible logs page to avoid N+1 D1 queries and high CPU
+    const allTokenIdCandidates = logs.map(l => l.tokenId).filter((id): id is string => Boolean(id));
     const tokenIds = Array.from(new Set(allTokenIdCandidates));
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
       try {
-        const chunkSize = 100;
-        for (let i = 0; i < tokenIds.length; i += chunkSize) {
-          const chunk = tokenIds.slice(i, i + chunkSize);
-          const tokens = await prisma.token.findMany({
-            where: { id: { in: chunk } },
-            select: { id: true, config: true }
-          });
-          for (const t of tokens) {
-            try {
-              tokenConfigMap[t.id] = JSON.parse(t.config);
-            } catch {}
-          }
+        const tokens = await prisma.token.findMany({
+          where: { id: { in: tokenIds.slice(0, 100) } },
+          select: { id: true, config: true }
+        });
+        for (const t of tokens) {
+          try {
+            tokenConfigMap[t.id] = JSON.parse(t.config);
+          } catch {}
         }
       } catch (tokenErr) {
         console.warn('Failed to batch query token configs for logs:', tokenErr);
@@ -119,7 +112,7 @@ export async function GET(req: Request) {
         addFaultFacet(primaryFault);
       }
 
-      // 2. Active multi-faceted chaos parameters from token config
+      // 2. Active multi-faceted chaos parameters from token config (if available)
       if (conf) {
         if (typeof conf.jitter === 'number' && conf.jitter > 0) {
           addFaultFacet('jitter');
@@ -163,21 +156,9 @@ export async function GET(req: Request) {
           derivedColo = 'EDGE';
         }
 
-        // Clean target URL
-        let cleanTarget = l.targetUrl || '';
-        if (!cleanTarget || cleanTarget === 'target' || cleanTarget === 'https://target') {
-          cleanTarget = 'https://jsonplaceholder.typicode.com';
-        }
-
-        // Clean tokenHint to always be an authentic JWT hint
-        let cleanTokenHint = l.tokenHint;
-        if (cleanTokenHint && !cleanTokenHint.startsWith('eyJ')) {
-          if (l.tokenId) {
-            cleanTokenHint = `eyJhbGci...${l.tokenId.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
-          } else {
-            cleanTokenHint = `eyJhbGci...${cleanTokenHint.replace(/[^a-zA-Z0-9]/g, '').slice(-4) || 'edge'}`;
-          }
-        }
+        // Return raw authentic target URL and tokenHint (QUAL-01: no hardcoded data masking)
+        const cleanTarget = l.targetUrl || '';
+        const cleanTokenHint = l.tokenHint || '';
 
         // Construct complete Fault Policy
         const conf = (l.tokenId && tokenConfigMap[l.tokenId]) || null;

@@ -31,13 +31,11 @@ export async function checkAndUpdateQuota(userId: string): Promise<{ allowed: bo
         where: {
           id: userId,
           dailyQuota: { lt: 100 },
-          hourlyQuota: { lt: 30 },
-          lastQuotaReset: user.lastQuotaReset
+          hourlyQuota: { lt: 30 }
         },
         data: {
           dailyQuota: { increment: 1 },
-          hourlyQuota: { increment: 1 },
-          lastQuotaReset: now
+          hourlyQuota: { increment: 1 }
         }
       });
 
