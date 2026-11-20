@@ -30,14 +30,20 @@ describe('Security: isPrivateIp (SSRF defense)', () => {
   it('should block IPv6 loopback, link-local, and ULA', () => {
     expect(isPrivateIp('::1')).toBe(true);
     expect(isPrivateIp('::')).toBe(true);
+    expect(isPrivateIp('0000:0000:0000:0000:0000:0000:0000:0001')).toBe(true);
+    expect(isPrivateIp('[0000:0000:0000:0000:0000:0000:0000:0001]')).toBe(true);
+    expect(isPrivateIp('0:0:0:0:0:0:0:0001')).toBe(true);
+    expect(isPrivateIp('0000::0001')).toBe(true);
     expect(isPrivateIp('fe80::1')).toBe(true);
     expect(isPrivateIp('fc00::1')).toBe(true);
     expect(isPrivateIp('fd00::dead:beef')).toBe(true);
     expect(isPrivateIp('[::1]')).toBe(true);
   });
 
-  it('should block IPv4-mapped IPv6', () => {
+  it('should block IPv4-mapped IPv6 in compressed and uncompressed formats', () => {
     expect(isPrivateIp('::ffff:127.0.0.1')).toBe(true);
+    expect(isPrivateIp('0:0:0:0:0:ffff:127.0.0.1')).toBe(true);
+    expect(isPrivateIp('0000:0000:0000:0000:0000:ffff:7f00:0001')).toBe(true);
     expect(isPrivateIp('::ffff:169.254.169.254')).toBe(true);
     expect(isPrivateIp('::ffff:10.0.0.1')).toBe(true);
     expect(isPrivateIp('::ffff:7f00:0001')).toBe(true);

@@ -208,4 +208,26 @@ describe('POST /api/tokens/create validation & pre-flight SSRF guards', () => {
     expect(data.error).toBe('INVALID_PARAMETERS');
     expect(data.message).toBe('Jitter cannot exceed base latency.');
   });
+
+  it('rejects unresolvable target domain (DNS_RESOLUTION_FAILED) - Fail-Closed', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user-valid' } });
+    const fetchMock = vi.fn().mockRejectedValue(new Error('DNS resolution timeout'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('../src/app/api/tokens/create/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        targetHost: 'unresolvable-timeout-domain.xyz',
+        fault: '502',
+        turnstileToken: 'tok',
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('DNS_RESOLUTION_FAILED');
+    vi.unstubAllGlobals();
+  });
 });

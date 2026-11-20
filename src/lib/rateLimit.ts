@@ -13,7 +13,8 @@ function purgeStale(now: number) {
   if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
   lastCleanup = now;
   for (const [key, record] of memoryStore.entries()) {
-    record.timestamps = record.timestamps.filter(ts => now - ts < 60000);
+    // Purge records older than CLEANUP_INTERVAL_MS (5 min) to support arbitrary windows up to 5 minutes
+    record.timestamps = record.timestamps.filter(ts => now - ts < CLEANUP_INTERVAL_MS);
     if (record.timestamps.length === 0) {
       memoryStore.delete(key);
     }
@@ -21,7 +22,8 @@ function purgeStale(now: number) {
 }
 
 /**
- * Check and record a rate limit attempt.
+ * Check and record an in-memory sliding window rate limit attempt for the current Isolate.
+ * Acts as the first-line burst defense (e.g. 15 req/min) before downstream D1 database quota checks.
  * @param identifier e.g. "user:cly123" or "ip:1.2.3.4"
  * @param maxRequests e.g. 15 requests
  * @param windowMs e.g. 60000 ms (1 minute)

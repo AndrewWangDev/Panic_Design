@@ -3,7 +3,7 @@ import { authenticateApiKey } from '@/lib/apiKey';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { getPrisma } from '@/lib/prisma';
 import { checkAndUpdateQuota, refundQuota } from '@/lib/quota';
-import { isPrivateIp, isValidTargetHost, resolveHostIps } from '@/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps } from '@/lib/security';
 import { SignJWT } from 'jose';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
@@ -164,7 +164,14 @@ export async function POST(req: Request) {
     }
 
     // Pre-flight DNS (A + AAAA) SSRF check
+    const parsedTarget = parseTargetHost(cleanHost);
     const resolvedHost = await resolveHostIps(cleanHost);
+    if (!parsedTarget?.isIp && resolvedHost.ips.length === 0) {
+      return NextResponse.json({
+        error: 'DNS_RESOLUTION_FAILED',
+        message: 'Target domain could not be resolved to any valid IP address.'
+      }, { status: 400 });
+    }
     if (resolvedHost.ips.some((ip) => isPrivateIp(ip))) {
       return NextResponse.json({
         error: 'SSRF_DETECTED',
@@ -275,10 +282,10 @@ export async function POST(req: Request) {
         createdAt: true,
         config: true
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     });
 
-    let verifiedActive = 0;
+    const activeTokens: { id: string }[] = [];
     const postNowMs = Date.now();
     for (const t of postCheckTokens) {
       try {
@@ -286,14 +293,18 @@ export async function POST(req: Request) {
         const ttlH = conf.ttlHours || conf.ttl || 0.25;
         const expMs = new Date(t.createdAt).getTime() + (ttlH * 60 * 60 * 1000);
         if (expMs > postNowMs) {
-          verifiedActive++;
+          activeTokens.push(t);
         }
       } catch {
-        verifiedActive++;
+        activeTokens.push(t);
       }
     }
 
-    if (verifiedActive > 5) {
+    let isWithinCap = true;
+    if (activeTokens.length > 5) {
+      isWithinCap = activeTokens.slice(0, 5).some(t => t.id === token.id);
+    }
+    if (!isWithinCap) {
       await prisma.token.update({
         where: { id: token.id },
         data: { isRevoked: true }
@@ -325,6 +336,7 @@ export async function POST(req: Request) {
       ttlHours,
       source: 'AGENT_API',
       userId: user.id,
+      jwtSalt: userRecord.jwtSalt,
       issuedWithSalt: userRecord.jwtSalt
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
