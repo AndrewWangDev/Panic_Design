@@ -15,26 +15,26 @@ export async function POST(req: Request) {
     
     const fakeHash = crypto.randomUUID();
     
-    // Unbind Github, scramble data, revoke API keys, and increment jwtSalt for global revocation
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        githubId: null,
-        username: 'Deleted User',
-        email: `deleted_${fakeHash}@panic.design`,
-        avatarUrl: null,
-        jwtSalt: { increment: 1 },
-        apiKeyHash: null,
-        apiKeyPrefix: null,
-        apiKeyCreatedAt: null
-      }
-    });
-
-    // Revoke all active tokens in DB for completeness
-    await prisma.token.updateMany({
-      where: { userId, isRevoked: false },
-      data: { isRevoked: true }
-    });
+    // Atomically scramble profile, revoke API keys, increment jwtSalt, and revoke all active tokens in DB batch
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          githubId: null,
+          username: 'Deleted User',
+          email: `deleted_${fakeHash}@panic.design`,
+          avatarUrl: null,
+          jwtSalt: { increment: 1 },
+          apiKeyHash: null,
+          apiKeyPrefix: null,
+          apiKeyCreatedAt: null
+        }
+      }),
+      prisma.token.updateMany({
+        where: { userId, isRevoked: false },
+        data: { isRevoked: true }
+      })
+    ]);
 
     const response = NextResponse.json({ success: true });
     
