@@ -89,6 +89,14 @@ describe('Security: isValidTargetHost', () => {
     expect(isValidTargetHost('app.local')).toBe(false);
     expect(isValidTargetHost('corp.lan')).toBe(false);
     expect(isValidTargetHost('metadata.google.internal')).toBe(false);
+    // Self-referencing service domains & worker loop prevention (PD-AUDIT-01)
+    expect(isValidTargetHost('gateway.andrewwangdev.com')).toBe(false);
+    expect(isValidTargetHost('panic.andrewwangdev.com')).toBe(false);
+    expect(isValidTargetHost('panic.design')).toBe(false);
+    expect(isValidTargetHost('gateway.panic.design')).toBe(false);
+    expect(isValidTargetHost('panicdesign.androwsmith7923.workers.dev')).toBe(false);
+    expect(isValidTargetHost('custom-app.workers.dev')).toBe(false);
+    expect(isValidTargetHost('api.andrewwangdev.com')).toBe(true);
   });
 
   it('should reject private IP host targets', () => {

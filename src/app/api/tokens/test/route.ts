@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { isPrivateIp, resolveHostIps } from '@/lib/security';
+import { getPrisma } from '@/lib/prisma';
+import { isPrivateIp, resolveGeoCoordinates, resolveHostIps, validateSameOrigin } from '@/lib/security';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { jwtVerify } from 'jose';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
@@ -16,6 +17,10 @@ async function resolveHostIp(rawHost: string): Promise<string | null> {
 
 export async function POST(req: Request) {
   try {
+    if (!validateSameOrigin(req)) {
+      return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+    }
+
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.toLowerCase().includes('application/json')) {
       return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
@@ -24,6 +29,14 @@ export async function POST(req: Request) {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const prisma = getPrisma();
+    const activeUser = await prisma.user.findFirst({
+      where: { id: session.user.id, githubId: { not: null } }
+    });
+    if (!activeUser) {
+      return NextResponse.json({ error: 'Unauthorized: Account deleted or inactive' }, { status: 401 });
     }
 
     // In-memory sliding window burst protection (PD-AUDIT-RES-01): max 5 probes per 10s per user
@@ -210,15 +223,8 @@ export async function POST(req: Request) {
       try {
         const address = await resolveHostIp(payload.targetHost);
         if (address && !isPrivateIp(address)) {
-          const geoRes = await fetch(`https://ipapi.co/${address}/json/`, {
-            signal: AbortSignal.timeout(800)
-          });
-          const geoData = await geoRes.json() as { longitude?: number; latitude?: number };
-          if (geoData && typeof geoData.longitude === 'number' && typeof geoData.latitude === 'number') {
-            w3 = [geoData.longitude, geoData.latitude];
-          } else {
-            w3 = [0, 0];
-          }
+          const coords = await resolveGeoCoordinates(address);
+          w3 = coords || [0, 0];
         } else {
           w3 = [0, 0];
         }

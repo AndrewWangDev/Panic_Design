@@ -5,6 +5,7 @@ const mockAuth = vi.fn();
 const mockCheckQuota = vi.fn();
 const mockRefundQuota = vi.fn();
 const mockTokenCreate = vi.fn();
+const mockUserFindFirst = vi.fn().mockResolvedValue({ id: 'user_1', jwtSalt: 'salt', githubId: 'gh_1' });
 
 vi.mock('@/auth', () => ({
   auth: () => mockAuth(),
@@ -23,7 +24,7 @@ vi.mock('@/lib/prisma', () => ({
     },
     user: {
       findUnique: vi.fn().mockResolvedValue({ jwtSalt: 'salt' }),
-      findFirst: vi.fn().mockResolvedValue({ jwtSalt: 'salt' }),
+      findFirst: (...args: unknown[]) => mockUserFindFirst(...args),
     },
   }),
 }));
@@ -308,5 +309,42 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
     expect(res6.status).toBe(429);
     const data6 = await res6.json();
     expect(data6.error).toBe('RATE_LIMIT_EXCEEDED');
+  });
+
+  it('rejects cross-origin requests to /api/tokens/test with 403 (PD-AUDIT-04)', async () => {
+    const { POST } = await import('../src/app/api/tokens/test/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://evil.com',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ token: 'test-token' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('Cross-origin request rejected');
+  });
+
+  it('rejects deleted user session on /api/tokens/test with 401 instead of 429 (PD-AUDIT-02)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'deleted-user' } });
+    mockUserFindFirst.mockResolvedValueOnce(null);
+
+    const { POST } = await import('../src/app/api/tokens/test/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://panic.andrewwangdev.com',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ token: 'test-token' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error).toBe('Unauthorized: Account deleted or inactive');
   });
 });

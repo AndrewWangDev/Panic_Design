@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { getPrisma } from '@/lib/prisma';
 import { checkAndUpdateQuota, refundQuota } from '@/lib/quota';
 import { SignJWT } from 'jose';
-import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps } from '@/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveGeoCoordinates, resolveHostIps } from '@/lib/security';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 const ALLOWED_FAULTS = new Set(['502', '504', '429', '444', 'latency']);
@@ -263,23 +263,13 @@ export async function POST(req: Request) {
     // Convert ttlHours to seconds string for expiration
     const expSeconds = Math.floor(ttlHours * 3600);
 
-    // Resolve W3 (Target Host) coordinates using pre-resolved primary IP with timeout
+    // Resolve W3 (Target Host) coordinates with 300ms fail-fast timeout and caching (PD-AUDIT-03)
     let w3: [number, number] | undefined = undefined;
-    try {
-      const address = resolvedHost.primaryIp;
-      if (address) {
-        // Get geo coordinates
-        const geoRes = await fetch(`https://ipapi.co/${address}/json/`, {
-          signal: AbortSignal.timeout(800)
-        });
-        const geoData = await geoRes.json() as any;
-        if (geoData && typeof geoData.longitude === 'number' && typeof geoData.latitude === 'number') {
-          w3 = [geoData.longitude, geoData.latitude];
-        }
+    if (resolvedHost.primaryIp) {
+      const coords = await resolveGeoCoordinates(resolvedHost.primaryIp);
+      if (coords) {
+        w3 = coords;
       }
-    } catch (geoErr) {
-      console.warn('Failed to resolve W3 coordinates:', geoErr);
-      // Proceed without w3, backend will handle fallback
     }
 
     const jwt = await new SignJWT({

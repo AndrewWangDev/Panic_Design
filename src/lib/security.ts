@@ -313,6 +313,16 @@ export function isValidTargetHost(rawHost: string): boolean {
   ]);
   if (forbiddenExact.has(host)) return false;
 
+  // Block self-referencing service domains & worker-to-worker loop candidates (PD-AUDIT-01)
+  const blockedSelfDomains = new Set([
+    'gateway.andrewwangdev.com',
+    'panic.andrewwangdev.com',
+    'panic.design',
+    'gateway.panic.design',
+    'panicdesign.androwsmith7923.workers.dev'
+  ]);
+  if (blockedSelfDomains.has(host) || host.endsWith('.workers.dev')) return false;
+
   const forbiddenSuffixes = [
     '.localhost',
     '.local',
@@ -410,6 +420,12 @@ export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; 
 /**
  * Validates that a mutation request originates from the same site/origin.
  * Defense against cross-site/same-site CSRF on high-consequence user management routes.
+ *
+ * NOTE (PD-AUDIT-06): Dynamic Host comparison (parsed.host === host) is strictly compliant
+ * with modern browser security specifications (WHATWG Fetch / RFC 7230). In browser environments,
+ * Host and Origin are Forbidden Header Names that JavaScript cannot forge or spoof.
+ * Using dynamic Host matching preserves essential multi-domain routing (e.g. panic.design,
+ * panic.andrewwangdev.com, and Cloudflare preview environments) without compromising security.
  */
 export function validateSameOrigin(req: Request): boolean {
   const origin = req.headers.get('origin');
@@ -433,4 +449,47 @@ export function validateSameOrigin(req: Request): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * In-memory LRU cache for GeoIP coordinates (PD-AUDIT-03 optimization).
+ * Caps outbound requests to third-party geo services.
+ */
+const geoCache = new Map<string, { coords: [number, number]; timestamp: number }>();
+const GEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export function _clearGeoCache(): void {
+  geoCache.clear();
+}
+
+/**
+ * Resolves W3 target host coordinates with 300ms fail-fast timeout and 24h LRU caching.
+ */
+export async function resolveGeoCoordinates(ip: string): Promise<[number, number] | null> {
+  if (!ip || isPrivateIp(ip)) return null;
+
+  const cached = geoCache.get(ip);
+  const now = Date.now();
+  if (cached && (now - cached.timestamp) < GEO_CACHE_TTL_MS) {
+    return cached.coords;
+  }
+
+  try {
+    const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, {
+      signal: AbortSignal.timeout(300)
+    });
+    const geoData = (await geoRes.json()) as { longitude?: unknown; latitude?: unknown } | null;
+    if (geoData && typeof geoData.longitude === 'number' && typeof geoData.latitude === 'number') {
+      const coords: [number, number] = [geoData.longitude, geoData.latitude];
+      geoCache.set(ip, { coords, timestamp: now });
+      if (geoCache.size > 1000) {
+        const firstKey = geoCache.keys().next().value;
+        if (firstKey) geoCache.delete(firstKey);
+      }
+      return coords;
+    }
+  } catch (geoErr) {
+    console.warn(`[Geo] W3 resolution failed for ${ip}:`, geoErr);
+  }
+  return null;
 }

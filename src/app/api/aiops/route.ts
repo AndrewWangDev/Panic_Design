@@ -200,7 +200,10 @@ Analysis: 'trans-Pacific' is a keyword. Immediately check if w1_colo, w2_colo, a
     }
 
     if (!parsedJson) {
-      console.error('Failed to parse AI response, fallback to OUT_OF_SCOPE');
+      // NOTE (PD-AUDIT-05): Non-JSON responses are classified as OUT_OF_SCOPE without refund.
+      // Workers AI inference has consumed real Cloudflare GPU compute. Retaining quota consumption
+      // prevents adversarial compute draining attacks via conversational/unparsable prompts.
+      console.info('[AIOps] Model output lacked valid JSON schema, classified as OUT_OF_SCOPE (Anti-Abuse compute protection retained)', { userId });
       parsedJson = {
         error_code: "OUT_OF_SCOPE",
         error_message: "The Engine rejected a malformed or conversational response.",
