@@ -49,7 +49,11 @@ export async function GET(req: Request) {
           trueActiveCount++;
         }
       } catch {
-        trueActiveCount++;
+        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        const exp = new Date(t.createdAt).getTime() + 0.25 * 3600 * 1000;
+        if (exp > now) {
+          trueActiveCount++;
+        }
       }
     }
 
@@ -238,8 +242,12 @@ export async function POST(req: Request) {
           trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
         }
       } catch {
-        activeCount++;
-        trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
+        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        const exp = new Date(t.createdAt).getTime() + 0.25 * 3600 * 1000;
+        if (exp > nowMs) {
+          activeCount++;
+          trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
+        }
       }
     }
 

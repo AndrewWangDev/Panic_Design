@@ -67,6 +67,15 @@ function getAuthInstance() {
               avatarUrl: user.image,
             }
           });
+
+          // Post-enrollment cap enforcement against TOCTOU race conditions (SEC-ISSUE-06)
+          if (!existingUser) {
+            const postCount = await prisma.user.count({ where: { githubId: { not: null } } });
+            if (postCount > 100) {
+              await prisma.user.delete({ where: { githubId } }).catch(() => {});
+              return "/?error=EnrollmentFull";
+            }
+          }
         } catch (upsertErr: any) {
           // Gracefully handle P2002 email unique constraint collision without failing login
           if (upsertErr?.code === 'P2002' || String(upsertErr?.message || '').includes('Unique constraint')) {

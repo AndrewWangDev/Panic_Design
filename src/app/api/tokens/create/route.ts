@@ -148,7 +148,11 @@ export async function POST(req: Request) {
           activeCount++;
         }
       } catch {
-        activeCount++;
+        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        const expiresAtMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
+        if (expiresAtMs > nowMs) {
+          activeCount++;
+        }
       }
     }
 

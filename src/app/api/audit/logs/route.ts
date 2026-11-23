@@ -42,7 +42,9 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '25', 10), 1), 100);
+    const skip = (page - 1) * limit;
     const sourceFilter = searchParams.get('source');
     const faultFilter = searchParams.get('fault');
     const targetFilter = searchParams.get('target');
@@ -68,7 +70,8 @@ export async function GET(req: Request) {
       prisma.chaosLog.findMany({
         where,
         orderBy: { executedAt: 'desc' },
-        take: limit
+        take: limit,
+        skip
       }),
       prisma.chaosLog.count({ where: { userId } }),
       prisma.chaosLog.count({
@@ -223,6 +226,12 @@ export async function GET(req: Request) {
           executedAt: l.executedAt.toISOString()
         };
       }),
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      },
       summary: {
         totalInjections: totalCount,
         todayInjections: todayCount,

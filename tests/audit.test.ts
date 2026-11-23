@@ -220,6 +220,16 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.success).toBe(true);
+    expect(json.pagination).toEqual({
+      page: 2,
+      limit: 25,
+      total: 100,
+      totalPages: 4
+    });
+    expect(mockChaosLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 25,
+      skip: 25
+    }));
     // Verifies that tok_combo was resolved from allUserLogs even though page 2 logs had no tokenId!
     expect(json.summary.faultCounts).toEqual({
       latency: 1,

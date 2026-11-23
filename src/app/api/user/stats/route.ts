@@ -36,7 +36,11 @@ export async function GET() {
           activeTokens++;
         }
       } catch {
-        // Ignore JSON parse errors for corrupted configs
+        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        const expiresAt = t.createdAt.getTime() + 0.25 * 60 * 60 * 1000;
+        if (expiresAt > nowMs) {
+          activeTokens++;
+        }
       }
     }
 
