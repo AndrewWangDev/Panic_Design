@@ -55,14 +55,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
     }
 
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        apiKeyHash: hash,
-        apiKeyPrefix: prefix,
-        apiKeyCreatedAt: now
+    let cascadeRevokeTokens = false;
+    try {
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.toLowerCase().includes('application/json')) {
+        const body = (await req.json()) as any;
+        if (body && typeof body === 'object' && body.cascadeRevokeTokens === true) {
+          cascadeRevokeTokens = true;
+        }
       }
-    });
+    } catch {}
+
+    if (cascadeRevokeTokens) {
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            apiKeyHash: hash,
+            apiKeyPrefix: prefix,
+            apiKeyCreatedAt: now,
+            jwtSalt: { increment: 1 }
+          }
+        }),
+        prisma.token.updateMany({
+          where: { userId: session.user.id, isRevoked: false },
+          data: { isRevoked: true }
+        })
+      ]);
+    } else {
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          apiKeyHash: hash,
+          apiKeyPrefix: prefix,
+          apiKeyCreatedAt: now
+        }
+      });
+    }
 
     // Return full API key ONCE! Client must warn user to copy it now.
     return NextResponse.json({
@@ -70,7 +99,10 @@ export async function POST(req: Request) {
       apiKey: rawKey,
       prefix: prefix,
       createdAt: now.toISOString(),
-      message: 'API Key generated. Copy it now; you will not be able to see it again.'
+      cascadeRevoked: cascadeRevokeTokens,
+      message: cascadeRevokeTokens
+        ? 'API Key generated and all active tokens revoked.'
+        : 'API Key generated. Active tokens remain valid until expiration.'
     });
   } catch (error) {
     console.error('Generate API Key Error:', error);

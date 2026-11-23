@@ -5,6 +5,8 @@ const mockAuth = vi.fn();
 const mockCheckQuota = vi.fn();
 const mockRefundQuota = vi.fn();
 const mockTokenCreate = vi.fn();
+const mockTokenFindMany = vi.fn().mockResolvedValue([]);
+const mockTokenUpdate = vi.fn().mockResolvedValue({});
 const mockUserFindFirst = vi.fn().mockResolvedValue({ id: 'user_1', jwtSalt: 'salt', githubId: 'gh_1' });
 
 vi.mock('@/auth', () => ({
@@ -19,8 +21,9 @@ vi.mock('@/lib/quota', () => ({
 vi.mock('@/lib/prisma', () => ({
   getPrisma: () => ({
     token: {
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: (...args: unknown[]) => mockTokenFindMany(...args),
       create: mockTokenCreate,
+      update: (...args: unknown[]) => mockTokenUpdate(...args),
     },
     user: {
       findUnique: vi.fn().mockResolvedValue({ jwtSalt: 'salt' }),
@@ -346,5 +349,82 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe('Unauthorized: Account deleted or inactive');
+  });
+
+  it('does not deadlock or revoke newly created token when historical corrupted tokens exist (PD-BUG-04)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_1' } });
+    mockCheckQuota.mockResolvedValueOnce({ allowed: true });
+
+    // 5 old corrupted tokens created 2 days ago
+    const corruptedOldTokens = Array.from({ length: 5 }, (_, i) => ({
+      id: `tok_corrupted_${i}`,
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      config: 'invalid-json-string'
+    }));
+
+    const newlyCreatedToken = {
+      id: 'tok_new_valid',
+      userId: 'user_1',
+      targetHost: 'example.com',
+      config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+      tokenHint: 'abc',
+      issuedWithSalt: 0,
+      isRevoked: false,
+      createdAt: new Date()
+    };
+
+    // Pre-check returns 5 corrupted old tokens (both pre-check & post-check query unrevokedTokens)
+    mockTokenFindMany
+      .mockResolvedValueOnce(corruptedOldTokens) // pre-check: discarded because age > 15m
+      .mockResolvedValueOnce([...corruptedOldTokens, newlyCreatedToken]); // post-check: corrupted discarded, new token is valid
+
+    mockTokenCreate.mockResolvedValueOnce(newlyCreatedToken);
+
+    const { POST } = await import('../src/app/api/tokens/create/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://panic.andrewwangdev.com',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetHost: 'example.com',
+        fault: '502',
+        customTtl: 1,
+        turnstileToken: 'test'
+      })
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.token.id).toBe('tok_new_valid');
+    expect(mockTokenUpdate).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'tok_new_valid' },
+      data: { isRevoked: true }
+    }));
+  });
+
+  it('rejects cross-origin requests to /api/tokens/create with 403 (PD-INFO-07)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_1' } });
+    const { POST } = await import('../src/app/api/tokens/create/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://malicious-attacker.com',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetHost: 'example.com',
+        fault: '502'
+      })
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBe('Forbidden: Cross-Origin Request Blocked');
   });
 });

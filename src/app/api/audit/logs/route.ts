@@ -72,13 +72,14 @@ export async function GET(req: Request) {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
 
-    const [logs, totalCount, todayCount, allUserLogs] = await Promise.all([
+    const [logs, filteredCount, totalCount, todayCount, allUserLogs] = await Promise.all([
       prisma.chaosLog.findMany({
         where,
         orderBy: { executedAt: 'desc' },
         take: limit,
         skip
       }),
+      prisma.chaosLog.count({ where }),
       prisma.chaosLog.count({ where: { userId } }),
       prisma.chaosLog.count({
         where: {
@@ -104,17 +105,25 @@ export async function GET(req: Request) {
     const tokenConfigMap: Record<string, any> = {};
     if (tokenIds.length > 0 && (prisma as any).token?.findMany) {
       try {
-        // Query by id in batch when under 100, or directly by userId index when exceeding 100 to eliminate any truncation
-        const tokens = await prisma.token.findMany({
-          where: tokenIds.length <= 100
-            ? { id: { in: tokenIds } }
-            : { userId },
-          select: { id: true, config: true }
-        });
-        for (const t of tokens) {
-          try {
-            tokenConfigMap[t.id] = JSON.parse(t.config);
-          } catch {}
+        const CHUNK_SIZE = 100;
+        const chunks: string[][] = [];
+        for (let i = 0; i < tokenIds.length; i += CHUNK_SIZE) {
+          chunks.push(tokenIds.slice(i, i + CHUNK_SIZE));
+        }
+        const tokenQueryResults = await Promise.all(
+          chunks.map(chunk =>
+            prisma.token.findMany({
+              where: { id: { in: chunk } },
+              select: { id: true, config: true }
+            })
+          )
+        );
+        for (const tokenGroup of tokenQueryResults) {
+          for (const t of tokenGroup) {
+            try {
+              tokenConfigMap[t.id] = JSON.parse(t.config);
+            } catch {}
+          }
         }
       } catch (tokenErr) {
         console.warn('Failed to batch query token configs for logs:', tokenErr);
@@ -235,8 +244,8 @@ export async function GET(req: Request) {
       pagination: {
         page,
         limit,
-        total: totalCount,
-        totalPages: Math.ceil(totalCount / limit)
+        total: filteredCount,
+        totalPages: Math.ceil(filteredCount / limit)
       },
       summary: {
         totalInjections: totalCount,

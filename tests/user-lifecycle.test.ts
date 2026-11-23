@@ -127,4 +127,52 @@ describe('User Lifecycle APIs: revoke-all and delete', () => {
       expect(resOk.status).toBe(200);
     });
   });
+
+  describe('POST /api/user/api-key (PD-INFO-08)', () => {
+    it('generates API key without cascading token revocation by default', async () => {
+      mockAuth.mockResolvedValueOnce({ user: { id: 'user_test_1' } });
+      const { POST: apiKeyPost } = await import('../src/app/api/user/api-key/route');
+      const req = new Request('https://panic.andrewwangdev.com/api/user/api-key', {
+        method: 'POST',
+        headers: {
+          origin: 'https://panic.andrewwangdev.com',
+          host: 'panic.andrewwangdev.com',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+      const res = await apiKeyPost(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.cascadeRevoked).toBe(false);
+      expect(json.message).toContain('Active tokens remain valid');
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(mockUserUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'user_test_1' },
+        data: expect.objectContaining({ apiKeyHash: expect.any(String) })
+      }));
+    });
+
+    it('cascades token revocation and increments jwtSalt when cascadeRevokeTokens is true', async () => {
+      mockAuth.mockResolvedValueOnce({ user: { id: 'user_test_1' } });
+      const { POST: apiKeyPost } = await import('../src/app/api/user/api-key/route');
+      const req = new Request('https://panic.andrewwangdev.com/api/user/api-key', {
+        method: 'POST',
+        headers: {
+          origin: 'https://panic.andrewwangdev.com',
+          host: 'panic.andrewwangdev.com',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ cascadeRevokeTokens: true })
+      });
+      const res = await apiKeyPost(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.cascadeRevoked).toBe(true);
+      expect(json.message).toContain('all active tokens revoked');
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { getPrisma } from '@/lib/prisma';
 import { checkAndUpdateQuota, refundQuota } from '@/lib/quota';
 import { SignJWT } from 'jose';
-import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveGeoCoordinates, resolveHostIps } from '@/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveGeoCoordinates, resolveHostIps, validateSameOrigin } from '@/lib/security';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 const ALLOWED_FAULTS = new Set(['502', '504', '429', '444', 'latency']);
@@ -12,6 +12,10 @@ const ALLOWED_DISTRIBUTIONS = new Set(['Uniform', 'Normal', 'Spikes']);
 const ALLOWED_MUTILATIONS = new Set(['None', 'Unexpected EOF', 'Type Poisoning', 'Empty Shell']);
 
 export async function POST(req: Request) {
+  if (!validateSameOrigin(req)) {
+    return NextResponse.json({ error: "Forbidden: Cross-Origin Request Blocked" }, { status: 403 });
+  }
+
   let userId: string | null = null;
   let quotaDeducted = false;
   try {
@@ -233,7 +237,11 @@ export async function POST(req: Request) {
           activeTokens.push(t);
         }
       } catch {
-        activeTokens.push(t);
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
+        const expMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
+        if (expMs > postNowMs) {
+          activeTokens.push(t);
+        }
       }
     }
 

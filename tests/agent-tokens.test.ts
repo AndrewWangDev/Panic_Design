@@ -9,6 +9,15 @@ const mockTokenFindFirst = vi.fn();
 const mockTokenUpdate = vi.fn();
 const mockChaosLogCreate = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockResolveHostIps = vi.fn();
+
+vi.mock('@/lib/security', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/security')>();
+  return {
+    ...actual,
+    resolveHostIps: (host: string) => mockResolveHostIps(host)
+  };
+});
 
 vi.mock('@/lib/apiKey', () => ({
   authenticateApiKey: (auth: string | null) => mockAuthenticateApiKey(auth)
@@ -51,6 +60,7 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     mockUserFindUnique.mockResolvedValue({ jwtSalt: 0 });
     mockChaosLogCreate.mockResolvedValue({});
     mockTokenUpdate.mockResolvedValue({});
+    mockResolveHostIps.mockResolvedValue({ ips: ['93.184.216.34'], primaryIp: '93.184.216.34' });
     mockTokenCreate.mockImplementation(async ({ data }: any) => ({
       id: 'token_agent_999',
       tokenHint: data.tokenHint,
@@ -268,5 +278,50 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     expect(json.activeTokensCount).toBe(2);
     expect(json.remainingSlots).toBe(3);
     expect(json.tokens.length).toBe(50);
+  });
+
+  it('does not deadlock or revoke newly created token when historical corrupted tokens exist (PD-BUG-04)', async () => {
+    // 5 old corrupted tokens created 2 days ago
+    const corruptedOldTokens = Array.from({ length: 5 }, (_, i) => ({
+      id: `tok_agent_corrupted_${i}`,
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      config: 'corrupted-json',
+      tokenHint: `hint_${i}`
+    }));
+
+    const newlyCreatedToken = {
+      id: 'token_agent_999',
+      userId: 'user_agent_1',
+      targetHost: 'example.com',
+      config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+      tokenHint: 'hint_new',
+      issuedWithSalt: 0,
+      isRevoked: false,
+      createdAt: new Date()
+    };
+
+    mockTokenFindMany
+      .mockResolvedValueOnce(corruptedOldTokens) // pre-check
+      .mockResolvedValueOnce([...corruptedOldTokens, newlyCreatedToken]); // post-check
+
+    const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+      method: 'POST',
+      headers: {
+        'authorization': 'Bearer pd_live_test',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ targetHost: 'example.com', fault: '502' })
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.tokenId).toBe('token_agent_999');
+    expect(mockTokenUpdate).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'token_agent_999' },
+      data: { isRevoked: true }
+    }));
   });
 });

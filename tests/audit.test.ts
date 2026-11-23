@@ -79,8 +79,9 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
         { injectedFault: '502', targetUrl: 'https://api.example.com' }
       ]);
     mockChaosLogCount
-      .mockResolvedValueOnce(42) // total
-      .mockResolvedValueOnce(5);  // today
+      .mockResolvedValueOnce(42) // filteredCount
+      .mockResolvedValueOnce(42) // totalCount
+      .mockResolvedValueOnce(5);  // todayCount
     mockTokenFindMany.mockResolvedValueOnce([
       { id: 'tok_1', config: JSON.stringify({ fault: '502' }) }
     ]);
@@ -286,5 +287,90 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
       take: 100,
       skip: 0
     }));
+  });
+
+  it('correctly computes filtered pagination totals when filter parameters are applied (PD-BUG-02)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    mockChaosLogFindMany
+      .mockResolvedValueOnce([
+        {
+          id: 'log_filt_1',
+          source: 'EDGE_INGRESS',
+          targetUrl: 'https://filtered.com',
+          injectedFault: '502',
+          tokenId: 'tok_f1',
+          executedAt: new Date('2026-11-20T10:00:00Z')
+        }
+      ])
+      .mockResolvedValueOnce([]); // allUserLogs
+    mockChaosLogCount
+      .mockResolvedValueOnce(3)    // filteredCount (only 3 match ?fault=502)
+      .mockResolvedValueOnce(1500) // totalCount (user has 1500 total logs)
+      .mockResolvedValueOnce(2);   // todayCount
+    mockTokenFindMany.mockResolvedValueOnce([]);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs?fault=502&page=1&limit=2');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.pagination).toEqual({
+      page: 1,
+      limit: 2,
+      total: 3,
+      totalPages: 2
+    });
+    expect(json.summary.totalInjections).toBe(1500);
+    expect(mockChaosLogCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({ userId: 'user_session_1', injectedFault: '502' })
+    });
+  });
+
+  it('batches token config queries in chunks of 100 without scanning all user tokens (PD-PERF-03)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    // Generate 150 distinct token candidates across visible logs and allUserLogs
+    const mockLogs = Array.from({ length: 50 }, (_, i) => ({
+      id: `log_${i}`,
+      source: 'AGENT_API',
+      targetUrl: 'https://example.com',
+      injectedFault: 'latency',
+      tokenId: `tok_${i}`,
+      executedAt: new Date('2026-11-20T10:00:00Z')
+    }));
+    const mockAllLogs = Array.from({ length: 150 }, (_, i) => ({
+      injectedFault: 'latency',
+      targetUrl: 'https://example.com',
+      tokenId: `tok_${i}`,
+      latencyMs: 10
+    }));
+
+    mockChaosLogFindMany
+      .mockResolvedValueOnce(mockLogs)
+      .mockResolvedValueOnce(mockAllLogs);
+    mockChaosLogCount.mockResolvedValue(150);
+
+    // Mock findMany for chunk 1 (100) and chunk 2 (50)
+    mockTokenFindMany
+      .mockResolvedValueOnce(Array.from({ length: 100 }, (_, i) => ({ id: `tok_${i}`, config: JSON.stringify({ fault: 'latency' }) })))
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, i) => ({ id: `tok_${100 + i}`, config: JSON.stringify({ fault: 'latency' }) })));
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+
+    // Verify token.findMany was called with chunked { id: { in: chunk } }, NEVER with bare { userId }
+    expect(mockTokenFindMany).toHaveBeenCalledTimes(2);
+    expect(mockTokenFindMany).toHaveBeenNthCalledWith(1, {
+      where: { id: { in: expect.any(Array) } },
+      select: { id: true, config: true }
+    });
+    expect(mockTokenFindMany).toHaveBeenNthCalledWith(2, {
+      where: { id: { in: expect.any(Array) } },
+      select: { id: true, config: true }
+    });
   });
 });

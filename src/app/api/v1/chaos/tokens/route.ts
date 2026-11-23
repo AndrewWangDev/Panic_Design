@@ -335,7 +335,11 @@ export async function POST(req: Request) {
           activeTokens.push(t);
         }
       } catch {
-        activeTokens.push(t);
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
+        const expMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
+        if (expMs > postNowMs) {
+          activeTokens.push(t);
+        }
       }
     }
 
