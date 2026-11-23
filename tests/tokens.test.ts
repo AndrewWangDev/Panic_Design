@@ -231,3 +231,82 @@ describe('POST /api/tokens/create validation & pre-flight SSRF guards', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-SEC-02, PD-AUDIT-RES-01, PD-AUDIT-API-01)', () => {
+  it('rejects cross-origin request to /api/tokens/revoke with 403', async () => {
+    const { POST } = await import('../src/app/api/tokens/revoke/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/revoke', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://evil.com',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ id: 'tok-123' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('Cross-origin request rejected');
+  });
+
+  it('rejects non-JSON Content-Type to /api/tokens/revoke with 415', async () => {
+    const { POST } = await import('../src/app/api/tokens/revoke/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/revoke', {
+      method: 'POST',
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://panic.andrewwangdev.com',
+        'content-type': 'text/plain'
+      },
+      body: JSON.stringify({ id: 'tok-123' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(415);
+    const data = await res.json();
+    expect(data.error).toBe('Content-Type must be application/json');
+  });
+
+  it('rejects non-JSON Content-Type to /api/tokens/test with 415', async () => {
+    const { POST } = await import('../src/app/api/tokens/test/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+      method: 'POST',
+      headers: {
+        'content-type': 'text/plain'
+      },
+      body: JSON.stringify({ token: 'test-token' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(415);
+    const data = await res.json();
+    expect(data.error).toBe('Content-Type must be application/json');
+  });
+
+  it('enforces burst rate limiting (max 5 requests per 10s) on /api/tokens/test (PD-AUDIT-RES-01)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'burst-tester' } });
+    const { POST } = await import('../src/app/api/tokens/test/route');
+
+    // 5 allowed attempts
+    for (let i = 0; i < 5; i++) {
+      const req = new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: 'malformed-jwt' }),
+      });
+      const res = await POST(req);
+      // Malformed JWT returns 400, meaning rate limit check passed!
+      expect(res.status).toBe(400);
+    }
+
+    // 6th attempt within window should be rate limited to 429
+    const req6 = new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'malformed-jwt' }),
+    });
+    const res6 = await POST(req6);
+    expect(res6.status).toBe(429);
+    const data6 = await res6.json();
+    expect(data6.error).toBe('RATE_LIMIT_EXCEEDED');
+  });
+});

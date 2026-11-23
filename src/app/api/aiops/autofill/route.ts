@@ -23,6 +23,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized: Account deleted' }, { status: 401 });
     }
 
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
+    }
+
     const { env } = getCloudflareContext() as any;
     if (!env || !env.AI) {
       return NextResponse.json({ error: 'Cloudflare AI environment not found' }, { status: 500 });

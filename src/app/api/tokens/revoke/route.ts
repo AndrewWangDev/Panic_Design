@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { getPrisma } from '@/lib/prisma';
-
+import { validateSameOrigin } from '@/lib/security';
 
 export async function POST(req: Request) {
   try {
+    if (!validateSameOrigin(req)) {
+      return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+    }
+
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

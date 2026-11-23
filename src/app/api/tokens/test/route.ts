@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { isPrivateIp, resolveHostIps } from '@/lib/security';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { jwtVerify } from 'jose';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
@@ -15,9 +16,26 @@ async function resolveHostIp(rawHost: string): Promise<string | null> {
 
 export async function POST(req: Request) {
   try {
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // In-memory sliding window burst protection (PD-AUDIT-RES-01): max 5 probes per 10s per user
+    const probeRate = checkRateLimit(`probe:${session.user.id}`, 5, 10000);
+    if (!probeRate.allowed) {
+      return NextResponse.json({
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: 'Probe test frequency exceeded. Please wait a few seconds before testing again.'
+      }, {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil(probeRate.resetMs / 1000)) }
+      });
     }
 
     const { token } = await req.json() as any;

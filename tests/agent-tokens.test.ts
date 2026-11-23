@@ -224,4 +224,49 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
       data: { isRevoked: true }
     });
   });
+
+  it('accurately counts active tokens without take: 50 drift in GET /api/v1/chaos/tokens (PD-AUDIT-BUG-01)', async () => {
+    const now = Date.now();
+    // Mock 2 active tokens in the 7-day window
+    const activeUnrevoked = [
+      {
+        id: 'tok-active-1',
+        createdAt: new Date(now - 1000 * 60), // 1 min ago
+        config: JSON.stringify({ ttlHours: 2 }) // valid for 2h -> active
+      },
+      {
+        id: 'tok-active-2',
+        createdAt: new Date(now - 1000 * 60 * 60), // 1 hour ago
+        config: JSON.stringify({ ttlHours: 5 }) // valid for 5h -> active
+      }
+    ];
+
+    // Mock 50 display tokens (all expired)
+    const displayTokens = Array.from({ length: 50 }, (_, i) => ({
+      id: `tok-disp-${i}`,
+      targetHost: 'httpbin.org',
+      tokenHint: 'hint',
+      isRevoked: false,
+      createdAt: new Date(now - 1000 * 60 * 60 * 24), // 1 day ago
+      config: JSON.stringify({ ttlHours: 0.1 }) // expired
+    }));
+
+    // First call is unrevokedTokens query (for active count), second call is dbTokens (take: 50)
+    mockTokenFindMany
+      .mockResolvedValueOnce(activeUnrevoked)
+      .mockResolvedValueOnce(displayTokens);
+
+    const { GET } = await import('../src/app/api/v1/chaos/tokens/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+      headers: { 'authorization': 'Bearer pd_live_test' }
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    // Active count must be 2, remaining slots must be 3 (5 - 2), not 0 from displayTokens
+    expect(json.activeTokensCount).toBe(2);
+    expect(json.remainingSlots).toBe(3);
+    expect(json.tokens.length).toBe(50);
+  });
 });

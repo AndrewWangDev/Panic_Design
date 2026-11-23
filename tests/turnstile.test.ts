@@ -11,10 +11,24 @@ describe('Turnstile API (POST /api/turnstile)', () => {
     vi.clearAllMocks();
   });
 
+  it('rejects non-JSON request with 415', async () => {
+    const { POST } = await import('../src/app/api/turnstile/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/turnstile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'invalid-json'
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(415);
+    const json = await res.json();
+    expect(json.error).toBe('Content-Type must be application/json');
+  });
+
   it('rejects invalid JSON request body with 400', async () => {
     const { POST } = await import('../src/app/api/turnstile/route');
     const req = new Request('https://panic.andrewwangdev.com/api/turnstile', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: 'invalid-json'
     });
     const res = await POST(req);

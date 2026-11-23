@@ -23,13 +23,43 @@ export async function GET(req: Request) {
     }
 
     const prisma = getPrisma();
+    const now = Date.now();
+    const maxActiveWindowStart = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+    // 1. Calculate true active token count matching POST cap enforcement logic (PD-AUDIT-BUG-01)
+    const unrevokedTokens = await prisma.token.findMany({
+      where: {
+        userId: user.id,
+        isRevoked: false,
+        createdAt: { gte: maxActiveWindowStart }
+      },
+      select: {
+        createdAt: true,
+        config: true
+      }
+    });
+
+    let trueActiveCount = 0;
+    for (const t of unrevokedTokens) {
+      try {
+        const conf = JSON.parse(t.config);
+        const tTtl = parseFloat(conf.ttlHours || conf.ttl) || 0.25;
+        const exp = new Date(t.createdAt).getTime() + tTtl * 3600 * 1000;
+        if (exp > now) {
+          trueActiveCount++;
+        }
+      } catch {
+        trueActiveCount++;
+      }
+    }
+
+    // 2. Fetch recent 50 tokens for display list
     const dbTokens = await prisma.token.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
       take: 50
     });
 
-    const now = Date.now();
     const tokens = dbTokens.map(t => {
       let isExpired = false;
       let ttlHours = 0.25;
@@ -51,12 +81,10 @@ export async function GET(req: Request) {
       };
     });
 
-    const activeCount = tokens.filter(t => t.status === 'active').length;
-
     return NextResponse.json({
       success: true,
-      activeTokensCount: activeCount,
-      remainingSlots: Math.max(0, 5 - activeCount),
+      activeTokensCount: trueActiveCount,
+      remainingSlots: Math.max(0, 5 - trueActiveCount),
       tokens
     });
   } catch (error) {

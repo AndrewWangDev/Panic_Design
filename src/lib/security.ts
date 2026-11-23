@@ -425,8 +425,8 @@ export function validateSameOrigin(req: Request): boolean {
   try {
     const parsed = new URL(target);
     const host = req.headers.get('host') || 'panic.andrewwangdev.com';
-    // Localhost in development/test allowed
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+    // Localhost in development/test allowed outside production
+    if (process.env.NODE_ENV !== 'production' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
       return true;
     }
     return parsed.host === host;

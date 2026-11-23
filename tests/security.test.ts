@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps, isValidIpv6, parseIpv6Words } from '../src/lib/security';
+import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveHostIps, isValidIpv6, parseIpv6Words, validateSameOrigin } from '../src/lib/security';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -238,5 +238,75 @@ describe('Security: resolveHostIps (A + AAAA)', () => {
     expect(res.ips).toContain('fc00::1');
     expect(res.ips.some((ip) => isPrivateIp(ip))).toBe(true);
     expect(res.primaryIp).toBe('104.21.5.19');
+  });
+});
+
+describe('Security: validateSameOrigin (PD-AUDIT-SEC-01)', () => {
+  const originalEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    (process.env as any).NODE_ENV = originalEnv;
+  });
+
+  it('should accept matching host and origin in production', () => {
+    (process.env as any).NODE_ENV = 'production';
+    const req = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://panic.andrewwangdev.com'
+      }
+    });
+    expect(validateSameOrigin(req)).toBe(true);
+  });
+
+  it('should reject cross-origin request in production', () => {
+    (process.env as any).NODE_ENV = 'production';
+    const req = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'https://attacker.andrewwangdev.com'
+      }
+    });
+    expect(validateSameOrigin(req)).toBe(false);
+  });
+
+  it('should reject localhost origin when NODE_ENV is production (PD-AUDIT-SEC-01)', () => {
+    (process.env as any).NODE_ENV = 'production';
+    const req = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'http://localhost:3000'
+      }
+    });
+    expect(validateSameOrigin(req)).toBe(false);
+
+    const reqIp = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'http://127.0.0.1:8080'
+      }
+    });
+    expect(validateSameOrigin(reqIp)).toBe(false);
+  });
+
+  it('should allow localhost origin outside production (dev/test)', () => {
+    (process.env as any).NODE_ENV = 'test';
+    const req = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com',
+        origin: 'http://localhost:3000'
+      }
+    });
+    expect(validateSameOrigin(req)).toBe(true);
+  });
+
+  it('should reject missing origin/referer in production', () => {
+    (process.env as any).NODE_ENV = 'production';
+    const req = new Request('https://panic.andrewwangdev.com/api/user/delete', {
+      headers: {
+        host: 'panic.andrewwangdev.com'
+      }
+    });
+    expect(validateSameOrigin(req)).toBe(false);
   });
 });

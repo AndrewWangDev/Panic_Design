@@ -3,6 +3,11 @@ import { verifyTurnstileToken } from '@/lib/turnstile';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
+  const contentType = req.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
+  }
+
   // 1. IP Rate Limiting (PD-ISSUE-05: prevent turnstile open proxy abuse)
   const clientIp = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown';
   const rateLimit = checkRateLimit(`turnstile:${clientIp}`, 15, 60000);
