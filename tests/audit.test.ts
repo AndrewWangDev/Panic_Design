@@ -239,4 +239,52 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
       'Garbage Injection': 1
     });
   });
+
+  it('handles invalid/non-numeric page and limit parameters gracefully without NaN (SEC-ISSUE-09)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    mockChaosLogFindMany.mockResolvedValueOnce([]);
+    mockChaosLogCount.mockResolvedValue(50);
+    mockTokenFindMany.mockResolvedValueOnce([]);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs?page=invalid&limit=xyz');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.pagination).toEqual({
+      page: 1,
+      limit: 25,
+      total: 50,
+      totalPages: 2
+    });
+    expect(mockChaosLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 25,
+      skip: 0
+    }));
+  });
+
+  it('clamps negative page and out-of-range limit safely (SEC-ISSUE-09)', async () => {
+    mockAuth.mockResolvedValueOnce({ user: { id: 'user_session_1' } });
+    mockChaosLogFindMany.mockResolvedValueOnce([]);
+    mockChaosLogCount.mockResolvedValue(50);
+    mockTokenFindMany.mockResolvedValueOnce([]);
+
+    const { GET } = await import('../src/app/api/audit/logs/route');
+    const req = new Request('https://panic.andrewwangdev.com/api/audit/logs?page=-5&limit=999');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.pagination).toEqual({
+      page: 1,
+      limit: 100,
+      total: 50,
+      totalPages: 1
+    });
+    expect(mockChaosLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 100,
+      skip: 0
+    }));
+  });
 });

@@ -42,8 +42,14 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '25', 10), 1), 100);
+    const rawPage = parseInt(searchParams.get('page') || '', 10);
+    const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+
+    const rawLimit = parseInt(searchParams.get('limit') || '', 10);
+    const limit = Number.isFinite(rawLimit) 
+      ? Math.min(Math.max(rawLimit, 1), 100) 
+      : 25;
+
     const skip = (page - 1) * limit;
     const sourceFilter = searchParams.get('source');
     const faultFilter = searchParams.get('fault');
