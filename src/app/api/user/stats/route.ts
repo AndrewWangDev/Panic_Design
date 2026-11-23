@@ -12,10 +12,12 @@ export async function GET() {
     const prisma = getPrisma();
 
     // 1. Get truly active tokens count (unrevoked AND not yet expired by TTL)
+    const maxActiveWindowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const unrevokedTokens = await prisma.token.findMany({
       where: {
         userId: session.user.id,
-        isRevoked: false
+        isRevoked: false,
+        createdAt: { gte: maxActiveWindowStart }
       },
       select: {
         createdAt: true,

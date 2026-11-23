@@ -67,6 +67,12 @@ export async function POST(req: Request) {
     let statusText = '';
     let responseBody = '';
     let resHeaders: Headers = new Headers();
+
+    // Dynamically calculate probe timeout based on injected latency + jitter (PD-ISSUE-03 fix)
+    const cfgLatency = typeof payload.latency === 'number' ? payload.latency : 0;
+    const cfgJitter = typeof payload.jitter === 'number' ? payload.jitter : 0;
+    const maxChaosDelay = (payload.fault === 'latency') ? (cfgLatency + cfgJitter) : 0;
+    const probeTimeoutMs = Math.min(30000, Math.max(10000, Math.floor(maxChaosDelay * 1.5) + 4000));
     
     try {
       const res = await fetch(gatewayUrl, {
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
           'Accept': '*/*'
         },
         redirect: 'manual',
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(probeTimeoutMs)
       });
       status = res.status;
       statusText = res.statusText;
@@ -122,9 +128,14 @@ export async function POST(req: Request) {
       }
     } catch (e: any) {
       console.error('Data Plane probe failed:', e);
-      status = 503;
-      statusText = 'Service Unavailable (Data Plane offline)';
-      responseBody = 'Upstream data plane unreachable or timed out.';
+      const isTimeout = e.name === 'TimeoutError' || (e.message && e.message.toLowerCase().includes('timeout'));
+      status = isTimeout ? 504 : 503;
+      statusText = isTimeout
+        ? `Gateway Timeout (Exceeded ${probeTimeoutMs / 1000}s probe window)`
+        : 'Service Unavailable (Data Plane offline)';
+      responseBody = isTimeout
+        ? `Upstream data plane probe timed out after ${probeTimeoutMs / 1000}s. Your configured chaos latency (${maxChaosDelay}ms) plus network RTT exceeded the probe window.`
+        : 'Upstream data plane unreachable or timed out.';
     }
     
     const t1_total = Date.now() - startTime;

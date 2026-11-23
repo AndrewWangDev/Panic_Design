@@ -28,6 +28,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Rate limit: max 30 requests per minute per user to protect D1 read capacity (PD-ISSUE-06)
+    const { checkRateLimit } = await import('@/lib/rateLimit');
+    const rateCheck = checkRateLimit(`audit-logs:${userId}`, 30, 60000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json({
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many audit log requests. Please limit polling interval.'
+      }, {
+        status: 429,
+        headers: { 'Retry-After': '2' }
+      });
+    }
+
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '25', 10), 1), 100);
     const sourceFilter = searchParams.get('source');

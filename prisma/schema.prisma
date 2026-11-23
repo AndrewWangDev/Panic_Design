@@ -28,7 +28,6 @@ model User {
   apiKeyCreatedAt DateTime?
 
   tokens        Token[]
-  usages        Usage[]
   logs          ChaosLog[]
 
   createdAt     DateTime   @default(now())
@@ -49,17 +48,9 @@ model Token {
 
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?
-}
 
-model Usage {
-  id            String    @id @default(cuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  month         String    // Format: YYYY-MM
-  requestCount  Int       @default(0)
-  limit         Int       @default(10000)
-
-  @@unique([userId, month])
+  @@index([userId, isRevoked])
+  @@index([userId, createdAt])
 }
 
 model ChaosLog {

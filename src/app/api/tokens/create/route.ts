@@ -123,11 +123,13 @@ export async function POST(req: Request) {
 
     const prisma = getPrisma();
 
-    // Check concurrent active tokens before creation
+    // Check concurrent active tokens before creation (bounded by 7d max TTL window to prevent N+1 full table scan)
+    const maxActiveWindowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const unrevokedTokens = await prisma.token.findMany({
       where: {
         userId: session.user.id,
-        isRevoked: false
+        isRevoked: false,
+        createdAt: { gte: maxActiveWindowStart }
       },
       select: {
         createdAt: true,
@@ -201,11 +203,12 @@ export async function POST(req: Request) {
       }
     });
 
-    // Post-creation TOCTOU concurrency check: verify active count does not exceed limit
+    // Post-creation TOCTOU concurrency check: verify active count does not exceed limit (bounded by 7d window)
     const postCheckTokens = await prisma.token.findMany({
       where: {
         userId: session.user.id,
-        isRevoked: false
+        isRevoked: false,
+        createdAt: { gte: maxActiveWindowStart }
       },
       select: {
         id: true,
