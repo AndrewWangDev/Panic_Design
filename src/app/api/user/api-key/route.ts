@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { getPrisma } from '@/lib/prisma';
 import { generateRawApiKey, hashApiKey, extractApiKeyPrefix } from '@/lib/apiKey';
+import { validateSameOrigin } from '@/lib/security';
 
 export async function GET() {
   try {
@@ -30,8 +31,12 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    if (!validateSameOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden: Cross-Origin Request Blocked" }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -73,8 +78,12 @@ export async function POST() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   try {
+    if (!validateSameOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden: Cross-Origin Request Blocked" }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

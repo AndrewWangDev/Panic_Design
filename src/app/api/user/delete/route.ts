@@ -1,10 +1,15 @@
 import { auth } from "@/auth";
 import { getPrisma } from "@/lib/prisma";
+import { validateSameOrigin } from "@/lib/security";
 import { NextResponse } from "next/server";
 
 
 export async function POST(req: Request) {
   try {
+    if (!validateSameOrigin(req)) {
+      return NextResponse.json({ error: "Forbidden: Cross-Origin Request Blocked" }, { status: 403 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

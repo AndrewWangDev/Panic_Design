@@ -99,5 +99,32 @@ describe('User Lifecycle APIs: revoke-all and delete', () => {
       expect(Array.isArray(transactionArgs)).toBe(true);
       expect(transactionArgs.length).toBe(2);
     });
+
+    it('blocks cross-origin malicious mutation requests with 403 (PD-AUDIT-03)', async () => {
+      mockAuth.mockResolvedValueOnce({ user: { id: 'user_test_1' } });
+      const { POST: revokePost } = await import('../src/app/api/user/revoke-all/route');
+      const maliciousReq = new Request('https://panic.andrewwangdev.com/api/user/revoke-all', {
+        method: 'POST',
+        headers: {
+          origin: 'https://attacker.andrewwangdev.com',
+          host: 'panic.andrewwangdev.com'
+        }
+      });
+      const res = await revokePost(maliciousReq);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'Forbidden: Cross-Origin Request Blocked' });
+
+      // Verify same origin is permitted
+      mockAuth.mockResolvedValueOnce({ user: { id: 'user_test_1' } });
+      const legitimateReq = new Request('https://panic.andrewwangdev.com/api/user/revoke-all', {
+        method: 'POST',
+        headers: {
+          origin: 'https://panic.andrewwangdev.com',
+          host: 'panic.andrewwangdev.com'
+        }
+      });
+      const resOk = await revokePost(legitimateReq);
+      expect(resOk.status).toBe(200);
+    });
   });
 });

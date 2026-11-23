@@ -5,6 +5,9 @@ interface RateLimitRecord {
 
 const memoryStore = new Map<string, RateLimitRecord>();
 
+// Maximum number of distinct tracking identifiers per isolate to prevent unbounded memory growth
+const MAX_STORE_SIZE = 5000;
+
 // Clean up stale entries every 5 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 let lastCleanup = Date.now();
@@ -21,6 +24,14 @@ function purgeStale(now: number) {
   }
 }
 
+export function _getRateLimitStoreSize(): number {
+  return memoryStore.size;
+}
+
+export function _clearRateLimitStore(): void {
+  memoryStore.clear();
+}
+
 /**
  * Check and record an in-memory sliding window rate limit attempt for the current Isolate.
  * Acts as the first-line burst defense (e.g. 15 req/min) before downstream D1 database quota checks.
@@ -34,6 +45,10 @@ export function checkRateLimit(identifier: string, maxRequests: number = 15, win
 
   let record = memoryStore.get(identifier);
   if (!record) {
+    if (memoryStore.size >= MAX_STORE_SIZE) {
+      const oldestKey = memoryStore.keys().next().value;
+      if (oldestKey) memoryStore.delete(oldestKey);
+    }
     record = { timestamps: [] };
     memoryStore.set(identifier, record);
   }

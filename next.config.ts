@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const cspHeader = `
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com;
+  script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com;
   style-src 'self' 'unsafe-inline' https://cdn.andrewwangdev.com;
   font-src 'self' https://cdn.andrewwangdev.com data:;
   img-src 'self' data: blob: https://*.githubusercontent.com https://avatars.githubusercontent.com;

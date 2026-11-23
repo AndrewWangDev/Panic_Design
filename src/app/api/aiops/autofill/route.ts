@@ -102,7 +102,7 @@ The JSON MUST follow this exact schema:
     "targetHostname": "string (Extract from input or keep current state)",
     "scope": "Global" | "Cloud ASNs" | "Cellular" | "Cross-Region" | "Bots Only",
     "tokenTtl": "number (in minutes)",
-    "faultType": "latency" | "502" | "504" | "429",
+    "faultType": "latency" | "502" | "504" | "429" | "444",
     "distribution": "Uniform" | "Normal" | "Spikes" | null (MUST BE null if faultType is NOT latency),
     "baseLatency": "number (0-10000) | null (MUST BE null if faultType is NOT latency)",
     "jitter": "number | null (MUST BE strictly <= baseLatency. MUST BE null if faultType is NOT latency)",

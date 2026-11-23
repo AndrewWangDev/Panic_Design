@@ -406,3 +406,31 @@ export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; 
   const primaryIp = v4List[0] || v6List[0] || null;
   return { ips, primaryIp };
 }
+
+/**
+ * Validates that a mutation request originates from the same site/origin.
+ * Defense against cross-site/same-site CSRF on high-consequence user management routes.
+ */
+export function validateSameOrigin(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  const referer = req.headers.get('referer');
+  const target = origin || referer;
+
+  // In standard browser fetch/forms, Origin or Referer is always attached.
+  if (!target) {
+    // Non-browser / Node test environments without origin headers allowed outside production
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  try {
+    const parsed = new URL(target);
+    const host = req.headers.get('host') || 'panic.andrewwangdev.com';
+    // Localhost in development/test allowed
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      return true;
+    }
+    return parsed.host === host;
+  } catch {
+    return false;
+  }
+}
