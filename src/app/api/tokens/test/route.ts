@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized: Account deleted or inactive' }, { status: 401 });
     }
 
-    // In-memory sliding window burst protection (PD-AUDIT-RES-01): max 5 probes per 10s per user
+    // In-memory sliding-window burst protection: max 5 probe requests per 10s per user.
     const probeRate = checkRateLimit(`probe:${session.user.id}`, 5, 10000);
     if (!probeRate.allowed) {
       return NextResponse.json({
@@ -99,7 +99,7 @@ export async function POST(req: Request) {
     let responseBody = '';
     let resHeaders: Headers = new Headers();
 
-    // Dynamically calculate probe timeout based on injected latency + jitter (PD-ISSUE-03 fix)
+    // Dynamically calculate probe timeout based on injected latency and jitter parameters.
     const cfgLatency = typeof payload.latency === 'number' ? payload.latency : 0;
     const cfgJitter = typeof payload.jitter === 'number' ? payload.jitter : 0;
     const maxChaosDelay = (payload.fault === 'latency') ? (cfgLatency + cfgJitter) : 0;
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       statusText = res.statusText;
       resHeaders = res.headers;
 
-      // Stream read up to 64KB to prevent Worker OOM on large upstream responses (ISSUE-04)
+      // Stream read up to 64KB to prevent Cloudflare Worker OOM on large upstream responses.
       const MAX_PREVIEW_BYTES = 64 * 1024;
       if (res.body) {
         const reader = res.body.getReader();

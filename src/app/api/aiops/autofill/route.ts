@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Turnstile Check
+    // Validate Cloudflare Turnstile token in non-development environments.
     const cleanTurnstileToken = typeof turnstileToken === 'string' ? turnstileToken : '';
     if (process.env.NODE_ENV !== 'development' && !cleanTurnstileToken) {
       return NextResponse.json({ error: 'Security verification missing' }, { status: 403 });
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       if (!isValid) return NextResponse.json({ error: 'Security verification failed' }, { status: 403 });
     }
 
-    // Check rate limiting quota
+    // Enforce user rate limiting and deduct daily AI inference quota.
     const { checkAndUpdateQuota } = await import('@/lib/quota');
     const quota = await checkAndUpdateQuota(session.user.id);
     if (!quota.allowed) {

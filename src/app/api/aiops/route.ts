@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Turnstile Check
+    // Validate Cloudflare Turnstile token in non-development environments.
     const cleanTurnstileToken = typeof turnstileToken === 'string' ? turnstileToken : '';
     if (process.env.NODE_ENV !== 'development' && !cleanTurnstileToken) {
       return NextResponse.json({ error: 'Security verification missing' }, { status: 403 });
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       if (!isValid) return NextResponse.json({ error: 'Security verification failed' }, { status: 403 });
     }
 
-    // Check rate limiting quota
+    // Enforce user rate limiting and deduct daily AI inference quota.
     const { checkAndUpdateQuota } = await import('@/lib/quota');
     const quota = await checkAndUpdateQuota(session.user.id);
     if (!quota.allowed) {
@@ -200,9 +200,9 @@ Analysis: 'trans-Pacific' is a keyword. Immediately check if w1_colo, w2_colo, a
     }
 
     if (!parsedJson) {
-      // NOTE (PD-AUDIT-05): Non-JSON responses are classified as OUT_OF_SCOPE without refund.
-      // Workers AI inference has consumed real Cloudflare GPU compute. Retaining quota consumption
-      // prevents adversarial compute draining attacks via conversational/unparsable prompts.
+      // Non-JSON responses are classified as OUT_OF_SCOPE without quota refund.
+      // Workers AI inference has consumed Cloudflare GPU compute cycles; retaining quota consumption
+      // prevents adversarial compute-draining attacks via conversational or unparsable prompts.
       console.info('[AIOps] Model output lacked valid JSON schema, classified as OUT_OF_SCOPE (Anti-Abuse compute protection retained)', { userId });
       parsedJson = {
         error_code: "OUT_OF_SCOPE",

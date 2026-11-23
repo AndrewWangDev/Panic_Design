@@ -4,8 +4,8 @@
   <p>
     <a href="https://github.com/AndrewWangDev/panic_design/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <img src="https://img.shields.io/badge/Edge-Cloudflare_Workers-F38020?logo=cloudflare&logoColor=white" alt="Cloudflare Workers">
-    <img src="https://img.shields.io/badge/Next.js-16.2-black?logo=next.js&logoColor=white" alt="Next.js 16.2">
-    <img src="https://img.shields.io/badge/Framework-Hono_v4.12.23-E36002" alt="Hono v4.12">
+    <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" alt="Next.js 16">
+    <img src="https://img.shields.io/badge/Framework-Hono_v4-E36002" alt="Hono v4">
     <img src="https://img.shields.io/badge/Auth-NextAuth-000000" alt="Next Auth">
     <img src="https://img.shields.io/badge/Map-topojson--client-green" alt="topojson-client">
   </p>
@@ -24,7 +24,7 @@ Say goodbye to tedious YAML configurations. Powered by the logical deduction cap
 ### ☠️ L4/L7 Mutilation Engine
 Achieve true **Zero-Intrusion fault injection** at the Cloudflare edge. Neither clients nor servers need to install any Agent SDKs:
 - **L4 Transport Layer Degradation**: Supports precise packet loss, absolute latency (Base Latency), and network jitter (Distributions: Uniform / Normal / Spikes).
-- **L7 Application Layer Mutilation**: Supports 429/502/504 status code overwrites, Type Poisoning, Empty Shell responses, and Unexpected EOF truncations.
+- **L7 Application Layer Mutilation**: Supports 429/444/502/504 status code overwrites, Type Poisoning, Empty Shell responses, and Unexpected EOF truncations.
 
 ### 🌍 Global Spatial Sandbox
 Powered by our **LGPA (Latency-Guided Proximity Arbitration)** heuristic engine, we visualize physical node spatial drift and network degradation trajectories in real-time on a 3D SVG World Map.
@@ -45,7 +45,7 @@ panic.design utilizes a completely **Control Plane & Data Plane separated**, clo
 ```
 
 - **Control Plane ([panic_design](https://github.com/AndrewWangDev/panic_design))**:
-  Built with Next.js 16.2 App Router, OpenNext for Cloudflare Workers, NextAuth v5, and Prisma ORM on Cloudflare D1. It manages developer authentication, token quotas, zero-trust cryptographic signing, and AIOps prompt deduction powered by Cloudflare Workers AI (`@cf/meta/llama-4-scout-17b-16e-instruct`).
+  Built with Next.js 16 App Router, OpenNext for Cloudflare Workers, NextAuth v5, and Prisma ORM on Cloudflare D1. It manages developer authentication, token quotas, zero-trust cryptographic signing, and AIOps prompt deduction powered by Cloudflare Workers AI (`@cf/meta/llama-4-scout-17b-16e-instruct`).
 - **Data Plane ([Panic_Design_Gateway](https://github.com/AndrewWangDev/Panic_Design_Gateway))**:
   An independent, open-source high-performance reverse proxy built on **Hono v4**. Deployed across Cloudflare's 300+ global edge locations, it implements a **dual-layer hybrid verification architecture**:
   1. **Fast-Path Cryptographic Filtering**: Verifies JWT HS256 signatures, user salts, and expiration in memory (< 1ms) with zero database roundtrips.
@@ -65,7 +65,7 @@ panic.design utilizes a completely **Control Plane & Data Plane separated**, clo
 #### 1. Control Plane Setup (`panic_design`)
 1. Clone this repository: `git clone https://github.com/AndrewWangDev/panic_design.git`
 2. Configure `.dev.vars` (or Cloudflare Worker secrets via `wrangler secret put`): `AUTH_SECRET`, `CHAOS_JWT_SECRET`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`, `TURNSTILE_SECRET_KEY`.
-3. Initialize the D1 schema: `npx wrangler d1 execute DB --local --file=./prisma/schema.sql`.
+3. Initialize the local D1 schema: `npx wrangler d1 execute DB --local --file=./prisma/migrations/20260531145244_init/migration.sql`.
 4. Run locally: `npm run dev` or deploy via `npm run build && npx wrangler deploy`.
 
 #### 2. Data Plane Setup (`Panic_Design_Gateway`)
@@ -118,11 +118,10 @@ x-panic-w1: -118.2437,34.0522
 # public IP location; locally, it's your local network's public IP location. Used for LGPA algorithm calculations.
 
 x-panic-w3: 0,0                 
-# [Explanation] The estimated longitude/latitude of the upstream origin. If you use a local curl, it will always be 0,0.
-# Why? Because "Target DNS Resolution + IP Geolocation" is physically and logically decoupled from "Edge Chaos Injection".
-# The Control Plane pre-calculates this offline when issuing the Token and embeds it into the JWT to save latency. 
-# A pure local curl lacks Dashboard context, so to guarantee zero-intrusion and prevent even 1ms of extra DNS 
-# resolution overhead, the Data Plane defaults it to zero.
+# [Explanation] The estimated longitude/latitude of the upstream origin. When invoked directly via CLI requests,
+# the coordinates default to 0,0. Target DNS resolution and IP geolocation are decoupled from edge chaos injection:
+# the Control Plane calculates coordinates upon token creation and embeds them into the JWT. Standalone CLI requests
+# default to zero coordinates to prevent additional DNS resolution overhead at the edge.
 
 Strict-Transport-Security: max-age=2592000
 Speculation-Rules: "/cdn-cgi/speculation"
@@ -136,12 +135,11 @@ alt-svc: h3=":443"; ma=86400
 <p><strong>Note
 
 ... [ERR_TCP_RESET: CONNECTION_DROPPED_BY_PEER] 
-# [Explanation] The exact Payload truncation point forcibly generated by the Data Plane based on the Unexpected EOF strategy!
+# [Explanation] The exact Payload truncation point forcibly generated by the Data Plane based on the Unexpected EOF strategy.
 
 <script>(function(){function c(){var b=a.contentDocument||... // Cloudflare Bot Challenge 
-# [Note] The trailing <script> appended after the truncation is the CAPTCHA defense code automatically injected by 
-# Cloudflare's external edge infrastructure. It treats our forcibly truncated error message as part of normal HTML. 
-# This perfectly proves that our gateway has successfully bypassed the outermost traffic scrubbing mechanisms!
+# [Note] The trailing <script> appended after the truncation is the challenge code injected by Cloudflare's external
+# edge infrastructure. This demonstrates transparent proxy passthrough of edge challenge artifacts without payload interference.
 ```
 
 ---

@@ -68,7 +68,7 @@ function getAuthInstance() {
             }
           });
 
-          // Post-enrollment cap enforcement against TOCTOU race conditions (SEC-ISSUE-06)
+          // Post-enrollment cap enforcement against TOCTOU race conditions to guarantee max 100 users
           if (!existingUser) {
             const postCount = await prisma.user.count({ where: { githubId: { not: null } } });
             if (postCount > 100) {

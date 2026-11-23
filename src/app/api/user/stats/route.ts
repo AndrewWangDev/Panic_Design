@@ -36,7 +36,7 @@ export async function GET() {
           activeTokens++;
         }
       } catch {
-        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
         const expiresAt = t.createdAt.getTime() + 0.25 * 60 * 60 * 1000;
         if (expiresAt > nowMs) {
           activeTokens++;

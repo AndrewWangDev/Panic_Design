@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
   }
 
-  // 1. IP Rate Limiting (PD-ISSUE-05: prevent turnstile open proxy abuse)
+  // 1. IP Rate Limiting: max 15 requests per minute to prevent Turnstile open-proxy abuse.
   const clientIp = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown';
   const rateLimit = checkRateLimit(`turnstile:${clientIp}`, 15, 60000);
   if (!rateLimit.allowed) {

@@ -201,7 +201,7 @@ export default function UserDropdown({ user }: UserDropdownProps) {
     try {
       const res = await fetch('/api/user/delete', { method: 'POST' });
       if (res.ok) {
-        // Force a hard replacement navigation to clear Next.js App Router cache & state without history back (SEC-ISSUE-08)
+        // Force a hard replacement navigation to purge Next.js App Router cache and session state without backward history.
         window.location.replace('/');
       } else {
         alert('Failed to delete account.');

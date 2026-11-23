@@ -1,5 +1,20 @@
 import { getPrisma } from '@/lib/prisma';
 
+/**
+ * Validates and atomically increments user API invocation quotas.
+ *
+ * Architecture & Concurrency Notes:
+ * Cloudflare D1 operates on an underlying single-writer SQLite architecture. To prevent
+ * row-lock serialization bottlenecks and database deadlocks during high-concurrency bursts,
+ * this function utilizes Optimistic Concurrency Control (OCC) via conditional `updateMany`
+ * writes rather than heavy pessimistic transactions.
+ *
+ * If a concurrent write conflict occurs across edge worker isolates, the operation employs
+ * jittered exponential backoff (20-50ms) and retries up to 3 times before failing closed.
+ *
+ * @param userId Unique identifier of the user account.
+ * @returns Object indicating whether invocation is permitted and optional failure reason.
+ */
 export async function checkAndUpdateQuota(userId: string): Promise<{ allowed: boolean, reason?: string }> {
   const prisma = getPrisma();
   const MAX_RETRIES = 3;

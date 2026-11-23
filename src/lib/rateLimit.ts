@@ -1,4 +1,15 @@
-// Sliding window in-memory rate limiter per user/IP
+/**
+ * In-memory sliding window rate limiter for edge Worker isolates.
+ *
+ * Architecture Notes:
+ * Cloudflare Workers isolates are ephemeral and localized to individual edge PoPs.
+ * This in-memory store acts as the first-line burst defense (e.g. 15 req/min) to absorb
+ * sudden request spikes without putting read pressure on D1. Global, durable limits
+ * are enforced downstream by the database quota tier.
+ *
+ * A bounded ceiling (MAX_STORE_SIZE = 5000) with FIFO oldest-key eviction prevents
+ * unbounded memory exhaustion under distributed spoofed identifier attacks.
+ */
 interface RateLimitRecord {
   timestamps: number[];
 }

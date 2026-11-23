@@ -148,7 +148,7 @@ export async function POST(req: Request) {
           activeCount++;
         }
       } catch {
-        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
         const expiresAtMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
         if (expiresAtMs > nowMs) {
           activeCount++;
@@ -263,7 +263,7 @@ export async function POST(req: Request) {
     // Convert ttlHours to seconds string for expiration
     const expSeconds = Math.floor(ttlHours * 3600);
 
-    // Resolve W3 (Target Host) coordinates with 300ms fail-fast timeout and caching (PD-AUDIT-03)
+    // Resolve W3 (Target Host) coordinates with 300ms fail-fast timeout and 24h LRU caching.
     let w3: [number, number] | undefined = undefined;
     if (resolvedHost.primaryIp) {
       const coords = await resolveGeoCoordinates(resolvedHost.primaryIp);

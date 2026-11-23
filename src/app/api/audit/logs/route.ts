@@ -28,7 +28,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Rate limit: max 30 requests per minute per user to protect D1 read capacity (PD-ISSUE-06)
+    // Enforces rate limiting (max 30 req/min per user) to safeguard D1 read capacity.
     const { checkRateLimit } = await import('@/lib/rateLimit');
     const rateCheck = checkRateLimit(`audit-logs:${userId}`, 30, 60000);
     if (!rateCheck.allowed) {
@@ -94,8 +94,8 @@ export async function GET(req: Request) {
       })
     ]);
 
-    // Batch resolve Token configurations for allUserLogs and visible logs to avoid N+1 D1 queries
-    // while ensuring aggregated summary KPI metrics do not drift when paging (NEW-02 fix)
+    // Batch-resolve Token configurations for allUserLogs and visible logs to eliminate N+1 D1 queries
+    // while ensuring aggregated summary KPI metrics remain stable across pagination.
     const allTokenIdCandidates = [
       ...allUserLogs.map(l => l.tokenId),
       ...logs.map(l => l.tokenId)
@@ -121,7 +121,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // Calculate aggregated metrics
+    // Compute aggregated fault distribution and target endpoint metrics for the active telemetry window.
     const faultCounts: Record<string, number> = {};
     const targetCounts: Record<string, number> = {};
 

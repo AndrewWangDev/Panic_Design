@@ -313,7 +313,7 @@ export function isValidTargetHost(rawHost: string): boolean {
   ]);
   if (forbiddenExact.has(host)) return false;
 
-  // Block self-referencing service domains & worker-to-worker loop candidates (PD-AUDIT-01)
+  // Block self-referencing service domains and worker-to-worker routing loop candidates.
   const blockedSelfDomains = new Set([
     'gateway.andrewwangdev.com',
     'panic.andrewwangdev.com',
@@ -421,7 +421,7 @@ export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; 
  * Validates that a mutation request originates from the same site/origin.
  * Defense against cross-site/same-site CSRF on high-consequence user management routes.
  *
- * NOTE (PD-AUDIT-06): Dynamic Host comparison (parsed.host === host) is strictly compliant
+ * Dynamic Host comparison (parsed.host === host) is strictly compliant
  * with modern browser security specifications (WHATWG Fetch / RFC 7230). In browser environments,
  * Host and Origin are Forbidden Header Names that JavaScript cannot forge or spoof.
  * Using dynamic Host matching preserves essential multi-domain routing (e.g. panic.design,
@@ -452,7 +452,7 @@ export function validateSameOrigin(req: Request): boolean {
 }
 
 /**
- * In-memory LRU cache for GeoIP coordinates (PD-AUDIT-03 optimization).
+ * In-memory LRU cache for GeoIP coordinates.
  * Caps outbound requests to third-party geo services.
  */
 const geoCache = new Map<string, { coords: [number, number]; timestamp: number }>();

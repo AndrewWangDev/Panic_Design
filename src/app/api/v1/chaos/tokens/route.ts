@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     const now = Date.now();
     const maxActiveWindowStart = new Date(now - 7 * 24 * 60 * 60 * 1000);
 
-    // 1. Calculate true active token count matching POST cap enforcement logic (PD-AUDIT-BUG-01)
+    // 1. Calculate true active token count matching creation cap enforcement logic.
     const unrevokedTokens = await prisma.token.findMany({
       where: {
         userId: user.id,
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
           trueActiveCount++;
         }
       } catch {
-        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
         const exp = new Date(t.createdAt).getTime() + 0.25 * 3600 * 1000;
         if (exp > now) {
           trueActiveCount++;
@@ -242,7 +242,7 @@ export async function POST(req: Request) {
           trulyActiveTokens.push({ id: t.id, hint: t.tokenHint });
         }
       } catch {
-        // Corrupted config defaults to 0.25h TTL from creation (SEC-ISSUE-05)
+        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
         const exp = new Date(t.createdAt).getTime() + 0.25 * 3600 * 1000;
         if (exp > nowMs) {
           activeCount++;

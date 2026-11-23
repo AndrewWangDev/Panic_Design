@@ -2,10 +2,18 @@ import { getPrisma } from '@/lib/prisma';
 
 const CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+/**
+ * Generates a high-entropy 32-character API key prefixed with 'pd_live_'.
+ *
+ * Cryptographic Invariant:
+ * Employs Web Crypto CSPRNG (`crypto.getRandomValues`) with rejection sampling
+ * (discarding random bytes >= 248) to eliminate modulo bias across the 62-character alphabet.
+ *
+ * @returns Formatted API key string (e.g. "pd_live_...")
+ */
 export function generateRawApiKey(): string {
-  // 62 * 4 = 248. Discard random bytes >= 248 to eliminate modulo bias across 0..61.
   const charsLen = CHARS.length;
-  const maxValidByte = 256 - (256 % charsLen); // 248
+  const maxValidByte = 256 - (256 % charsLen); // 248 (62 * 4)
   let str = '';
   while (str.length < 32) {
     const bytes = new Uint8Array(48);
