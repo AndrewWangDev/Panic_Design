@@ -25,7 +25,7 @@ const MOCK_LOGS = [
   "[SYSTEM] Awaiting control plane commands...",
   "[SYSTEM] Syncing with Cloudflare D1 distributed database... OK."
 ];
-import { EDGE_TOPOLOGY, haversineDist, calculateBearing, findBestColo, generateMockSignature } from '@/lib/lgpa';
+import { EDGE_TOPOLOGY, haversineDist, calculateBearing, findBestColo, generateMockSignature, interpolateGreatCircle } from '@/lib/lgpa';
 
 const syntaxHighlight = (json: string) => {
   const sanitized = json
@@ -264,8 +264,7 @@ curl -i "https://gateway.andrewwangdev.com/?token=$PANIC_TOKEN"
           minDistance = baselineW2DistRef.current || 0;
         } else {
           if (w1 && w3 && w1.length === 2 && w3.length === 2 && (w3[0] !== 0 || w3[1] !== 0)) {
-            const w2Lng = (1 - alpha) * w1[0] + alpha * w3[0];
-            const w2Lat = (1 - alpha) * w1[1] + alpha * w3[1];
+            const [w2Lng, w2Lat] = interpolateGreatCircle(w1[1], w1[0], w3[1], w3[0], alpha);
             data.telemetry.w2 = [w2Lng, w2Lat];
             const result = findBestColo(w2Lat, w2Lng, w1[1], w1[0], w3[1], w3[0]);
             estimatedColo = result.name;
@@ -343,7 +342,7 @@ curl -i "https://gateway.andrewwangdev.com/?token=$PANIC_TOKEN"
         lgpaLogs = [
           `> [Telemetry] Payload received. Extracting routing metrics...`,
           `> [Network] Activating LGPA (Latency-Guided Proximity Anchoring) Engine...`,
-          `> [Network] ├─ [Step 1] Latency Computation  : T1 = ${t1_latency}ms (Δ ${t1Sign}${t1DeltaStr}% vs Baseline ${baseT1}ms)`,
+          `> [Network] ├─ [Step 1] Latency Computation  : T1 (est.) = ${t1_latency}ms (Δ ${t1Sign}${t1DeltaStr}% vs Baseline ${baseT1}ms)`,
           `> [Network] ├─ [Step 2] Hysteresis Check     : ΔT1 < 40%. Spatial Drift Inhibited.`,
           `> [Network] └─ [Step 3] Proximity Anchoring  : Sticky Anchor enforced at [${w2_colo}]`,
           `> `,
@@ -354,7 +353,7 @@ curl -i "https://gateway.andrewwangdev.com/?token=$PANIC_TOKEN"
         lgpaLogs = [
           `> [Telemetry] Payload received. Extracting routing metrics...`,
           `> [Network] Activating LGPA (Latency-Guided Proximity Anchoring) Engine...`,
-          `> [Network] ├─ [Step 1] Latency Computation  : T1 = ${t1_latency}ms (Δ ${t1Sign}${t1DeltaStr}% vs Baseline ${baseT1}ms)`,
+          `> [Network] ├─ [Step 1] Latency Computation  : T1 (est.) = ${t1_latency}ms (Δ ${t1Sign}${t1DeltaStr}% vs Baseline ${baseT1}ms)`,
           `> [Network] ├─ [Step 2] Hysteresis Check     : Threshold Broken! Topology Drift Detected.`,
           `> [Network] ├─ [Step 3] Spatial Interpolation: Recalculating Absolute Displacement...`,
           `> [Network] └─ [Step 4] Proximity Anchoring  : Anchor re-snapped to [${w2_colo}] (Δd ≈ ${snap_error_km}km)`,
@@ -366,7 +365,7 @@ curl -i "https://gateway.andrewwangdev.com/?token=$PANIC_TOKEN"
         lgpaLogs = [
           `> [Telemetry] Payload received. Extracting routing metrics...`,
           `> [Network] Activating LGPA (Latency-Guided Proximity Anchoring) Engine...`,
-          `> [Network] ├─ [Step 1] Latency Computation  : T1 = ${t1_latency}ms, T3 = ${t3_latency}ms`,
+          `> [Network] ├─ [Step 1] Latency Computation  : T1 (est.) = ${t1_latency}ms, T3 (est.) = ${t3_latency}ms`,
           `> [Network] ├─ [Step 2] Spatial Interpolation: Weight α ≈ ${alpha_weight} (Virtual Coordinate Derived)`,
           `> [Network] ├─ [Step 3] Haversine Matrix Scan: Calculating surface distances to topology...`,
           `> [Network] └─ [Step 4] Proximity Anchoring  : Snapped to [${w2_colo}] (Δd ≈ ${snap_error_km}km)`,
@@ -432,24 +431,24 @@ curl -i "https://gateway.andrewwangdev.com/?token=$PANIC_TOKEN"
         const t3_rtt = Math.round(realTelemetry.t3 * 2);
 
         if (data.status === 444) {
-          lines.push(`[Telemetry] Edge Network RTT (T1): ${t1_rtt}ms`);
-          lines.push(`[Telemetry] Upstream Backhaul (T3): -- (PACKET_DROP)`);
+          lines.push(`[Telemetry] Edge Ingress Network RTT (T1 est.): ${t1_rtt}ms`);
+          lines.push(`[Telemetry] Upstream Backhaul (T3 est.): -- (PACKET_DROP)`);
           lines.push(`[System] Target Unreachable. Edge payload dropped.`);
         } else if (fault === 'latency') {
-          lines.push(`[Telemetry] Edge Network RTT (T1): ${t1_rtt}ms`);
+          lines.push(`[Telemetry] Edge Ingress Network RTT (T1 est.): ${t1_rtt}ms`);
           lines.push(`[Telemetry] Injected Latency (T2): ${t2_rtt}ms`);
-          lines.push(`[Telemetry] Upstream Backhaul (T3): ${t3_rtt}ms`);
+          lines.push(`[Telemetry] Upstream Backhaul (T3 est.): ${t3_rtt}ms`);
         } else if (fault === '502') {
-          lines.push(`[Telemetry] Edge Network RTT (T1): ${t1_rtt}ms`);
-          lines.push(`[Telemetry] Upstream Backhaul (T3): -- (ABORTED)`);
+          lines.push(`[Telemetry] Edge Ingress Network RTT (T1 est.): ${t1_rtt}ms`);
+          lines.push(`[Telemetry] Upstream Backhaul (T3 est.): -- (ABORTED)`);
           lines.push(`[System] Target Unreachable. Edge payload delivered.`);
         } else if (fault === '504') {
-          lines.push(`[Telemetry] Edge Network RTT (T1): ${t1_rtt}ms`);
+          lines.push(`[Telemetry] Edge Ingress Network RTT (T1 est.): ${t1_rtt}ms`);
           lines.push(`[Telemetry] Edge Processing (T2): ${t2_rtt}ms (Timeout Wait)`);
-          lines.push(`[Telemetry] Upstream Backhaul (T3): -- (TIMEOUT_EXCEEDED)`);
+          lines.push(`[Telemetry] Upstream Backhaul (T3 est.): -- (TIMEOUT_EXCEEDED)`);
         } else if (fault === '429') {
-          lines.push(`[Telemetry] Edge Network RTT (T1): ${t1_rtt}ms`);
-          lines.push(`[Telemetry] Upstream Backhaul (T3): -- (ABORTED)`);
+          lines.push(`[Telemetry] Edge Ingress Network RTT (T1 est.): ${t1_rtt}ms`);
+          lines.push(`[Telemetry] Upstream Backhaul (T3 est.): -- (ABORTED)`);
           lines.push(`[System] Target Unreachable. Edge payload delivered.`);
         }
         

@@ -49,7 +49,29 @@ panic.design utilizes a completely **Control Plane & Data Plane separated**, clo
 - **Data Plane ([Panic_Design_Gateway](https://github.com/AndrewWangDev/Panic_Design_Gateway))**:
   An independent, open-source high-performance reverse proxy built on **Hono v4**. Deployed across Cloudflare's 300+ global edge locations, it implements a **dual-layer hybrid verification architecture**:
   1. **Fast-Path Cryptographic Filtering**: Verifies JWT HS256 signatures, user salts, and expiration in memory (< 1ms) with zero database roundtrips.
-  2. **Consistent State Synchronization (Edge D1)**: Performs instant token revocation checks and records asynchronous telemetry logs via `executionCtx.waitUntil`, guaranteeing zero overhead on downstream proxy latencies.
+  2. **Consistent State Synchronization (Edge D1)**: Performs bounded eventual token revocation checks (5s nominal micro-cache, up to 60s degraded SWR fallback under database outage) and records asynchronous telemetry logs via `executionCtx.waitUntil`, guaranteeing zero overhead on downstream proxy latencies.
+
+---
+
+## 🛡️ Security Model, SLA & Residual Risk Profile
+
+### 1. Token Revocation Consistency (SEC-02)
+- **Architecture**: Bounded Eventual Consistency.
+- **SLA**: Nominal revocation window is **<= 5,000ms** (enforced via edge isolate in-memory micro-cache). Under transient D1 lock contention or upstream database brownout, a graceful **60-second Stale-While-Revalidate (SWR)** fallback preserves gateway forwarding availability while failing closed upon subsequent expiration.
+
+### 2. Outbound Network & DNS Rebinding Model (SEC-01)
+- **Multi-Layer Defense**:
+  - Control plane performs pre-flight DNS (DoH A + AAAA) SSRF checks before minting tokens.
+  - Gateway data plane performs secondary edge DoH validation against RFC 1918, link-local, loopback, and cloud metadata endpoints prior to proxying.
+  - Cloudflare edge network enforces platform-level outbound firewall blocks on private and sensitive destinations.
+- **Residual Risk Disclosure**: Under the Cloudflare Workers Serverless execution environment, `fetch()` establishes outbound TCP/TLS connections via the platform's proprietary resolution engine without exposing socket-level IP pinning. A theoretical sub-millisecond TOCTOU window remains if an attacker controls an authoritative nameserver with TTL=0. This is documented as an inherent Serverless architecture boundary.
+
+### 3. Telemetry Semantics & Metrics Precision (DATA-01, DATA-02)
+- **W1 (Client Ingress PoP)**: Reflects the Cloudflare Anycast edge data center (PoP) coordinates where the client's packet first entered the edge network, rather than the client host's physical GPS coordinates.
+- **T1 & T3 Latency**: Single-direction transit durations ($T_1$ client-to-edge, $T_3$ edge-to-upstream) are mathematical estimates derived from differential round-trip telemetry without requiring hardware clock synchronization.
+
+### 4. GDPR Compliance & Privacy (PRIV-01)
+- **Pseudonymization**: In full compliance with GDPR Article 4(5), account deletion permanently scrubs all PII from the active identity store. Historic chaos fault records are retained under detached, opaque UUIDs to safeguard systemic reliability analytics and audit traceability.
 
 ---
 

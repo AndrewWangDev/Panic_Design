@@ -352,7 +352,7 @@ export default function UserDropdown({ user }: UserDropdownProps) {
               <div className={styles.modalTitle}>Revoke All Tokens</div>
             </div>
             <div className={styles.modalBody}>
-              Are you sure you want to revoke <strong>ALL</strong> your edge tokens? This will instantly block all traffic using these tokens and cannot be undone.
+              Are you sure you want to revoke <strong>ALL</strong> your edge tokens? This will block all traffic using these tokens across edge nodes (subject to a 5-second nominal revocation SLA) and cannot be undone.
             </div>
             <div className={styles.modalActions}>
               <button className={styles.cancelBtn} onClick={() => setShowRevokeModal(false)} disabled={isRevoking}>
@@ -375,8 +375,8 @@ export default function UserDropdown({ user }: UserDropdownProps) {
               <div className={styles.modalTitleDelete}>Delete Account</div>
             </div>
             <div className={styles.modalBody}>
-              Are you sure you want to delete your account? This will <strong>permanently disconnect</strong> your GitHub profile, scramble your identity, and instantly revoke all active chaos tokens.<br /><br />
-              Your historical metrics will be kept anonymously for system integrity, but you will permanently lose access to your remaining usage quota.
+              Are you sure you want to delete your account? This will <strong>permanently disconnect</strong> your GitHub profile, scramble your identity, and invalidate all active chaos tokens.<br /><br />
+              Your historical metrics will be retained under GDPR Article 4(5) pseudonymization for system reliability, and you will permanently lose access to your remaining usage quota.
             </div>
             <div className={styles.modalActions}>
               <button className={styles.cancelBtn} onClick={() => setShowDeleteModal(false)} disabled={isDeleting}>

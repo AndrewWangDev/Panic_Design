@@ -324,4 +324,87 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
       data: { isRevoked: true }
     }));
   });
+
+  it('strictly enforces 5 active tokens cap under high concurrency race conditions on v1/chaos/tokens (BUG-03)', async () => {
+    type MockToken = {
+      id: string;
+      userId: string;
+      targetHost: string;
+      config: string;
+      tokenHint: string;
+      issuedWithSalt: number;
+      isRevoked: boolean;
+      createdAt: Date;
+    };
+
+    const tokenDb: MockToken[] = [];
+    let idCounter = 1;
+
+    // Initially 3 active tokens exist
+    for (let i = 1; i <= 3; i++) {
+      tokenDb.push({
+        id: `tok_agent_init_${i}`,
+        userId: 'user_agent_1',
+        targetHost: 'example.com',
+        config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+        tokenHint: `hint_${i}`,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date(Date.now() - (10 - i) * 1000)
+      });
+    }
+
+    mockTokenFindMany.mockImplementation(async () => {
+      return tokenDb.filter(t => !t.isRevoked).map(t => ({ ...t }));
+    });
+
+    mockTokenCreate.mockImplementation(async ({ data }: any) => {
+      const newToken: MockToken = {
+        id: `tok_agent_race_${idCounter++}`,
+        userId: data.userId,
+        targetHost: data.targetHost,
+        config: data.config,
+        tokenHint: data.tokenHint,
+        issuedWithSalt: data.issuedWithSalt || 0,
+        isRevoked: false,
+        createdAt: new Date()
+      };
+      tokenDb.push(newToken);
+      return { ...newToken };
+    });
+
+    mockTokenUpdate.mockImplementation(async ({ where, data }: any) => {
+      const t = tokenDb.find(x => x.id === where.id);
+      if (t) {
+        if (data.isRevoked !== undefined) t.isRevoked = data.isRevoked;
+      }
+      return t ? { ...t } : null;
+    });
+
+    const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
+
+    // Fire 6 parallel requests when only 2 slots remain (3 + 2 = 5 slots max)
+    const requests = Array.from({ length: 6 }, () => {
+      return POST(new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+        method: 'POST',
+        headers: {
+          'authorization': 'Bearer pd_live_test',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ targetHost: 'example.com', fault: '502' })
+      }));
+    });
+
+    const responses = await Promise.all(requests);
+    const activeTokens = tokenDb.filter(t => !t.isRevoked);
+
+    // Assert that active tokens NEVER exceed 5
+    expect(activeTokens.length).toBeLessThanOrEqual(5);
+    expect(activeTokens.length).toBe(5);
+
+    // Exactly 2 succeeded
+    const statuses = responses.map(r => r.status);
+    const successful = statuses.filter(s => s === 200).length;
+    expect(successful).toBe(2);
+  });
 });

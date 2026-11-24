@@ -594,7 +594,7 @@ export default function WorldMap({ w1, w2, w3, t1, t2, t3, fault = 'latency', ta
 
             return (
               <>
-                {effW1 && !isNxDomain && renderPin(effW1, w1Colo !== 'UNKNOWN' ? `Cloud Runner (${w1Colo})` : "Cloud Runner", pinColor, false, undefined, anchorW1)}
+                {effW1 && !isNxDomain && renderPin(effW1, w1Colo !== 'UNKNOWN' ? `Client Ingress (${w1Colo})` : "Client Ingress", pinColor, false, undefined, anchorW1)}
                 
                 {(isPending || isNxDomain) && effW1 && projection(effW1) && (
                   <g style={{ transform: `translate(${projection(effW1)?.[0]}px, ${projection(effW1)?.[1]}px) scale(${1 / viewport.k})`, transition: 'transform 1.5s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>

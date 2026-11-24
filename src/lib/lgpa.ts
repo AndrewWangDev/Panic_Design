@@ -117,3 +117,72 @@ export function generateMockSignature(payloadObj: unknown): string {
   const deterministicString = `panic_v2_${hexHash}_edje_signature_payload`;
   return btoa(deterministicString).replace(/=/g, '').padEnd(43, 'A').substring(0, 43);
 }
+
+/**
+ * Calculates intermediate coordinates between two points along a great-circle path using Slerp (Spherical Linear Interpolation).
+ * Handles antipodal, identical points, and properly wraps longitude around the 180-degree meridian.
+ * 
+ * @param lat1 Latitude of start point in degrees [-90, 90]
+ * @param lon1 Longitude of start point in degrees [-180, 180]
+ * @param lat2 Latitude of end point in degrees [-90, 90]
+ * @param lon2 Longitude of end point in degrees [-180, 180]
+ * @param fraction Fraction along great circle path [0, 1] (0 = start point, 1 = end point)
+ * @returns [lng, lat] in degrees, with lng in [-180, 180] and lat in [-90, 90]
+ */
+export function interpolateGreatCircle(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  fraction: number
+): [number, number] {
+  // Clamp fraction
+  const f = Math.max(0, Math.min(1, fraction));
+  if (f === 0) return [lon1, lat1];
+  if (f === 1) return [lon2, lat2];
+
+  const toRad = Math.PI / 180;
+  const toDeg = 180 / Math.PI;
+
+  const phi1 = lat1 * toRad;
+  const lambda1 = lon1 * toRad;
+  const phi2 = lat2 * toRad;
+  const lambda2 = lon2 * toRad;
+
+  // Angular distance d between the two points on sphere
+  const deltaLambda = lambda2 - lambda1;
+  const cosD = Math.sin(phi1) * Math.sin(phi2) + Math.cos(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  
+  // Guard for numerical precision
+  const clampedCosD = Math.max(-1, Math.min(1, cosD));
+  const d = Math.acos(clampedCosD);
+
+  // If points are coincident or extremely close (d < 1e-6 radians ~ 6 meters), return start point
+  if (d < 1e-6) {
+    return [lon1, lat1];
+  }
+
+  // If points are antipodal (d ~ PI), return simple spherical midpoint
+  if (Math.abs(d - Math.PI) < 1e-6) {
+    return [(lon1 + lon2) / 2, (lat1 + lat2) / 2];
+  }
+
+  const sinD = Math.sin(d);
+  const A = Math.sin((1 - f) * d) / sinD;
+  const B = Math.sin(f * d) / sinD;
+
+  const x = A * Math.cos(phi1) * Math.cos(lambda1) + B * Math.cos(phi2) * Math.cos(lambda2);
+  const y = A * Math.cos(phi1) * Math.sin(lambda1) + B * Math.cos(phi2) * Math.sin(lambda2);
+  const z = A * Math.sin(phi1) + B * Math.sin(phi2);
+
+  const phi = Math.atan2(z, Math.sqrt(x * x + y * y));
+  const lambda = Math.atan2(y, x);
+
+  const lat = phi * toDeg;
+  let lng = lambda * toDeg;
+
+  // Normalize lng to [-180, 180]
+  lng = ((lng + 180) % 360 + 360) % 360 - 180;
+
+  return [Number(lng.toFixed(6)), Number(lat.toFixed(6))];
+}

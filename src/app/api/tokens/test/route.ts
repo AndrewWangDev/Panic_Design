@@ -89,6 +89,7 @@ export async function POST(req: Request) {
     if (!quota.allowed) {
       return NextResponse.json({ error: 'QUOTA_EXCEEDED', message: quota.reason }, { status: 429 });
     }
+    const quotaDeductedAt = new Date();
 
     const baseUrl = (env as any)?.DATA_PLANE_URL || process.env.DATA_PLANE_URL || 'https://gateway.andrewwangdev.com';
     const gatewayUrl = `${baseUrl.replace(/\/$/, '')}/?token=${encodeURIComponent(token)}`;
@@ -178,7 +179,7 @@ export async function POST(req: Request) {
     // If gateway itself rejected the token or is unreachable, do not fabricate telemetry and refund quota
     if (!hasChaosTelemetry) {
       const { refundQuota } = await import('@/lib/quota');
-      await refundQuota(session.user.id).catch(() => {});
+      await refundQuota(session.user.id, quotaDeductedAt).catch(() => {});
 
       return NextResponse.json({
         success: false,

@@ -109,32 +109,59 @@ export async function checkAndUpdateQuota(userId: string): Promise<{ allowed: bo
 
 /**
  * Atomically refunds 1 request to user daily/hourly quota in case downstream
- * Token creation fails or is aborted. Uses atomic conditional decrement to
- * prevent lost updates during concurrent requests. Decouples daily and hourly
- * decrement so crossing hour windows does not block daily refund.
+ * Token creation fails or is aborted. Uses an atomic Prisma transaction with
+ * conditional decrements to prevent lost updates during concurrent requests.
+ *
+ * If `deductedAt` is supplied, checks whether the current time window matches
+ * the deduction time window. If the hour or day window has rolled over, the
+ * respective decrement is safely skipped to avoid cross-window quota pollution (BUG-01, BUG-02).
  */
-export async function refundQuota(userId: string): Promise<void> {
+export async function refundQuota(userId: string, deductedAt?: Date): Promise<void> {
   const prisma = getPrisma();
   try {
-    await prisma.user.updateMany({
-      where: {
-        id: userId,
-        dailyQuota: { gt: 0 }
-      },
-      data: {
-        dailyQuota: { decrement: 1 }
-      }
-    });
+    const now = new Date();
+    const sameDay = !deductedAt || (
+      now.getUTCFullYear() === deductedAt.getUTCFullYear() &&
+      now.getUTCMonth() === deductedAt.getUTCMonth() &&
+      now.getUTCDate() === deductedAt.getUTCDate()
+    );
+    const sameHour = !deductedAt || (
+      sameDay && now.getUTCHours() === deductedAt.getUTCHours()
+    );
 
-    await prisma.user.updateMany({
-      where: {
-        id: userId,
-        hourlyQuota: { gt: 0 }
-      },
-      data: {
-        hourlyQuota: { decrement: 1 }
-      }
-    });
+    const operations = [];
+
+    if (sameDay) {
+      operations.push(
+        prisma.user.updateMany({
+          where: {
+            id: userId,
+            dailyQuota: { gt: 0 }
+          },
+          data: {
+            dailyQuota: { decrement: 1 }
+          }
+        })
+      );
+    }
+
+    if (sameHour) {
+      operations.push(
+        prisma.user.updateMany({
+          where: {
+            id: userId,
+            hourlyQuota: { gt: 0 }
+          },
+          data: {
+            hourlyQuota: { decrement: 1 }
+          }
+        })
+      );
+    }
+
+    if (operations.length > 0) {
+      await prisma.$transaction(operations);
+    }
   } catch (err) {
     console.error('Failed to refund quota for user:', userId, err);
   }

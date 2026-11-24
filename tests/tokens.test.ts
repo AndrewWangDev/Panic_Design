@@ -8,6 +8,7 @@ const mockTokenCreate = vi.fn();
 const mockTokenFindMany = vi.fn().mockResolvedValue([]);
 const mockTokenUpdate = vi.fn().mockResolvedValue({});
 const mockUserFindFirst = vi.fn().mockResolvedValue({ id: 'user_1', jwtSalt: 'salt', githubId: 'gh_1' });
+const mockVerifyTurnstile = vi.fn().mockResolvedValue(true);
 
 vi.mock('@/auth', () => ({
   auth: () => mockAuth(),
@@ -34,12 +35,16 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: () => ({
-    env: { AUTH_SECRET: 'test-secret-for-vitest-at-least-32-chars' },
+    env: { 
+      AUTH_SECRET: 'test-secret-for-vitest-at-least-32-chars',
+      TURNSTILE_SECRET_KEY: 'test-turnstile-secret-key',
+      CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars'
+    },
   }),
 }));
 
 vi.mock('@/lib/turnstile', () => ({
-  verifyTurnstileToken: vi.fn().mockResolvedValue(true),
+  verifyTurnstileToken: (...args: unknown[]) => mockVerifyTurnstile(...args),
 }));
 
 describe('Token Config & TTL Compatibility', () => {
@@ -103,6 +108,9 @@ describe('SSRF Protection with Port Stripping', () => {
 describe('POST /api/tokens/create validation & pre-flight SSRF guards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
+    mockVerifyTurnstile.mockResolvedValue(true);
     mockAuth.mockResolvedValue({ user: { id: 'user_123' } });
     mockCheckQuota.mockResolvedValue({ allowed: true, remaining: 5 });
   });
@@ -152,6 +160,12 @@ describe('POST /api/tokens/create validation & pre-flight SSRF guards', () => {
 
   it('accepts max valid dashboard bounds (customTtl=168, jitter>latency when fault!=latency) and blocks AAAA private SSRF before quota/DB', async () => {
     const fetchMock = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('challenges.cloudflare.com')) {
+        return {
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response;
+      }
       if (url.includes('type=A&') || url.endsWith('type=A')) {
         return {
           ok: true,
@@ -389,7 +403,7 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        targetHost: 'example.com',
+        targetHost: '1.1.1.1',
         fault: '502',
         customTtl: 1,
         turnstileToken: 'test'
@@ -426,5 +440,105 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBe('Forbidden: Cross-Origin Request Blocked');
+  });
+
+  it('strictly enforces the 5 active tokens cap under high concurrency race conditions (BUG-03)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user_1' } });
+    mockCheckQuota.mockResolvedValue({ allowed: true });
+
+    type MockToken = {
+      id: string;
+      userId: string;
+      targetHost: string;
+      config: string;
+      tokenHint: string;
+      issuedWithSalt: number;
+      isRevoked: boolean;
+      createdAt: Date;
+    };
+
+    const tokenDb: MockToken[] = [];
+    let idCounter = 1;
+
+    // Initially 3 active tokens already exist
+    for (let i = 1; i <= 3; i++) {
+      tokenDb.push({
+        id: `tok_initial_${i}`,
+        userId: 'user_1',
+        targetHost: 'example.com',
+        config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+        tokenHint: `hint_${i}`,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date(Date.now() - (10 - i) * 1000)
+      });
+    }
+
+    mockTokenFindMany.mockImplementation(async () => {
+      const tokens = tokenDb.filter(t => !t.isRevoked).map(t => ({ ...t }));
+      tokens.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+      return tokens;
+    });
+
+    mockTokenCreate.mockImplementation(async ({ data }: any) => {
+      const newToken: MockToken = {
+        id: `tok_race_${idCounter++}`,
+        userId: data.userId,
+        targetHost: data.targetHost,
+        config: data.config,
+        tokenHint: data.tokenHint,
+        issuedWithSalt: data.issuedWithSalt || 0,
+        isRevoked: false,
+        createdAt: new Date()
+      };
+      tokenDb.push(newToken);
+      return { ...newToken };
+    });
+
+    mockTokenUpdate.mockImplementation(async ({ where, data }: any) => {
+      const t = tokenDb.find(x => x.id === where.id);
+      if (t) {
+        if (data.isRevoked !== undefined) t.isRevoked = data.isRevoked;
+      }
+      return t ? { ...t } : null;
+    });
+
+    const prevEnv = process.env.NODE_ENV;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+
+    try {
+      const { POST } = await import('../src/app/api/tokens/create/route');
+
+      // Fire 6 parallel requests when only 2 slots remain (3 + 2 = 5 slots max)
+      const requests = Array.from({ length: 6 }, () => {
+        return POST(new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+          method: 'POST',
+          headers: {
+            host: 'panic.andrewwangdev.com',
+            origin: 'https://panic.andrewwangdev.com',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            targetHost: '1.1.1.1',
+            fault: '502',
+            customTtl: 1
+          })
+        }));
+      });
+
+      const responses = await Promise.all(requests);
+      const statuses = responses.map(r => r.status);
+      const activeTokens = tokenDb.filter(t => !t.isRevoked);
+
+      // Assert that active tokens NEVER exceed 5
+      expect(activeTokens.length).toBeLessThanOrEqual(5);
+      expect(activeTokens.length).toBe(5);
+
+      // Exactly 2 succeeded, the remaining 4 were blocked/rolled back
+      const successful = statuses.filter(s => s === 200).length;
+      expect(successful).toBe(2);
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
   });
 });

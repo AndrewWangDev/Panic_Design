@@ -5,9 +5,14 @@ import { checkAndUpdateQuota, refundQuota } from '../src/lib/quota';
 const mockFindUnique = vi.fn();
 const mockUpdateMany = vi.fn();
 const mockUpdate = vi.fn();
+const mockTransaction = vi.fn(async (ops) => {
+  if (Array.isArray(ops)) return Promise.all(ops);
+  return [];
+});
 
 vi.mock('../src/lib/prisma', () => ({
   getPrisma: () => ({
+    $transaction: mockTransaction,
     user: {
       findUnique: mockFindUnique,
       updateMany: mockUpdateMany,
@@ -145,11 +150,12 @@ describe('Quota Engine: Core Logic & Concurrency Control', () => {
     expect(mockUpdateMany).toHaveBeenCalledTimes(2);
   });
 
-  it('refundQuota should atomically decrement daily and hourly quota when > 0', async () => {
+  it('refundQuota should atomically decrement daily and hourly quota inside $transaction (BUG-01)', async () => {
     mockUpdateMany.mockResolvedValue({ count: 1 });
 
     await refundQuota('user-1');
 
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockUpdateMany).toHaveBeenCalledTimes(2);
     expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -163,5 +169,43 @@ describe('Quota Engine: Core Logic & Concurrency Control', () => {
         data: { hourlyQuota: { decrement: 1 } }
       })
     );
+  });
+
+  it('refundQuota should skip hourly refund if request crossed hourly window (BUG-02)', async () => {
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+
+    const twoHoursAgoSameDay = new Date();
+    twoHoursAgoSameDay.setUTCHours(twoHoursAgoSameDay.getUTCHours() - 2);
+
+    // If crossing day happened due to negative hours in early morning, align day
+    if (twoHoursAgoSameDay.getUTCDate() !== new Date().getUTCDate()) {
+      twoHoursAgoSameDay.setUTCDate(new Date().getUTCDate());
+      twoHoursAgoSameDay.setUTCHours(Math.max(0, new Date().getUTCHours() - 1));
+    }
+
+    // Only run if we actually have distinct hours on the same UTC day
+    if (twoHoursAgoSameDay.getUTCHours() !== new Date().getUTCHours() && twoHoursAgoSameDay.getUTCDate() === new Date().getUTCDate()) {
+      await refundQuota('user-1', twoHoursAgoSameDay);
+
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+      expect(mockUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1', dailyQuota: { gt: 0 } },
+          data: { dailyQuota: { decrement: 1 } }
+        })
+      );
+    }
+  });
+
+  it('refundQuota should skip both refunds if request crossed calendar day window (BUG-02)', async () => {
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+
+    const yesterday = new Date(Date.now() - 25 * 3600 * 1000);
+
+    await refundQuota('user-1', yesterday);
+
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

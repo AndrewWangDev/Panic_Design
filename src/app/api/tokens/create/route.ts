@@ -18,6 +18,7 @@ export async function POST(req: Request) {
 
   let userId: string | null = null;
   let quotaDeducted = false;
+  let quotaDeductedAt: Date | undefined;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -94,9 +95,13 @@ export async function POST(req: Request) {
       if (!isValid) return NextResponse.json({ error: 'Security verification failed' }, { status: 403 });
     }
 
-    // Pre-check signing secret before deducting quota or writing to DB
+    // Pre-check signing secret before deducting quota or writing to DB (SEC-03)
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
+    const hasDedicatedChaosSecret = Boolean((env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET);
+    if (!hasDedicatedChaosSecret && process.env.NODE_ENV === 'production') {
+      console.warn('[SECURITY WARNING] Dedicated CHAOS_JWT_SECRET is missing in production. Falling back to AUTH_SECRET (SEC-03).');
+    }
+    const authSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
       console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
       return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
@@ -124,6 +129,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'QUOTA_EXCEEDED', message: quota.reason }, { status: 429 });
     }
     quotaDeducted = true;
+    quotaDeductedAt = new Date();
 
     const prisma = getPrisma();
 
@@ -162,7 +168,7 @@ export async function POST(req: Request) {
 
     if (activeCount >= 5) {
       if (quotaDeducted && userId) {
-        await refundQuota(userId);
+        await refundQuota(userId, quotaDeductedAt);
         quotaDeducted = false;
       }
       return NextResponse.json({ error: 'CONCURRENT_CAP_EXCEEDED' }, { status: 403 });
@@ -179,7 +185,7 @@ export async function POST(req: Request) {
 
     if (!user) {
       if (quotaDeducted && userId) {
-        await refundQuota(userId);
+        await refundQuota(userId, quotaDeductedAt);
         quotaDeducted = false;
       }
       return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
@@ -256,7 +262,7 @@ export async function POST(req: Request) {
         data: { isRevoked: true }
       });
       if (quotaDeducted && userId) {
-        await refundQuota(userId);
+        await refundQuota(userId, quotaDeductedAt);
         quotaDeducted = false;
       }
       return NextResponse.json({
@@ -317,7 +323,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (quotaDeducted && userId) {
-      await refundQuota(userId);
+      await refundQuota(userId, quotaDeductedAt);
       quotaDeducted = false;
     }
     console.error('Create Token Error:', error);

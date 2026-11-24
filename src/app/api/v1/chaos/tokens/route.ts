@@ -100,6 +100,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let userId: string | null = null;
   let quotaDeducted = false;
+  let quotaDeductedAt: Date | undefined;
 
   try {
     const user = await authenticateApiKey(req.headers.get('authorization'));
@@ -265,6 +266,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'QUOTA_EXCEEDED', message: quota.reason }, { status: 429 });
     }
     quotaDeducted = true;
+    quotaDeductedAt = new Date();
 
     // Fetch user jwtSalt
     const userRecord = await prisma.user.findUnique({
@@ -273,15 +275,19 @@ export async function POST(req: Request) {
     });
 
     if (!userRecord) {
-      if (quotaDeducted && userId) await refundQuota(userId);
+      if (quotaDeducted && userId) await refundQuota(userId, quotaDeductedAt);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Cloudflare signing secret (support separate CHAOS_JWT_SECRET with AUTH_SECRET fallback)
+    // Cloudflare signing secret (support separate CHAOS_JWT_SECRET with AUTH_SECRET fallback) (SEC-03)
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
+    const hasDedicatedChaosSecret = Boolean((env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET);
+    if (!hasDedicatedChaosSecret && process.env.NODE_ENV === 'production') {
+      console.warn('[SECURITY WARNING] Dedicated CHAOS_JWT_SECRET is missing in production. Falling back to AUTH_SECRET (SEC-03).');
+    }
+    const authSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
-      if (quotaDeducted && userId) await refundQuota(userId);
+      if (quotaDeducted && userId) await refundQuota(userId, quotaDeductedAt);
       console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
       return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }
@@ -353,7 +359,7 @@ export async function POST(req: Request) {
         data: { isRevoked: true }
       });
       if (quotaDeducted && userId) {
-        await refundQuota(userId);
+        await refundQuota(userId, quotaDeductedAt);
         quotaDeducted = false;
       }
       return NextResponse.json({
@@ -428,7 +434,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (quotaDeducted && userId) {
-      await refundQuota(userId).catch(() => {});
+      await refundQuota(userId, quotaDeductedAt).catch(() => {});
     }
     console.error('Agent Mint Token Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

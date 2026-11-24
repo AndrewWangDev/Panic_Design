@@ -325,7 +325,7 @@ function HomeContent() {
             <ShieldAlert size={32} className={styles.bentoIcon} />
             <h3 className={styles.bentoTitle}>Stateless Cryptography</h3>
             <p className={styles.bentoDesc}>
-              Built exclusively for edge networks. Every request is verified via HMAC-SHA256 JWT signatures for instant abuse prevention and O(1) revocation.
+              Built exclusively for edge networks. Every request is verified via HMAC-SHA256 JWT signatures for low-latency abuse prevention and bounded O(1) revocation (5s nominal SLA).
             </p>
           </div>
 

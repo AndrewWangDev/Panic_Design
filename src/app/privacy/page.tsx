@@ -56,18 +56,18 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>3. Data Retention & Cryptographic Anonymization</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>3. Data Retention & Cryptographic Pseudonymization</h2>
             <p style={{ color: 'var(--text-primary)' }}>We believe in the right to be forgotten. Upon account deletion:</p>
             <ul style={{ color: 'var(--text-primary)', paddingLeft: '24px', marginTop: '12px' }}>
-              <li style={{ marginBottom: '8px' }}>All active Edge Chaos Tokens (JWTs) are instantaneously revoked and blacklisted.</li>
-              <li style={{ marginBottom: '8px' }}>Your Personally Identifiable Information (PII) — including your email, name, and avatar — is permanently scrubbed from our active databases.</li>
-              <li style={{ marginBottom: '8px' }}>To preserve the integrity of our systemic audit logs, your records are retained but cryptographically anonymized, replaced entirely by unidentifiable random hashes.</li>
+              <li style={{ marginBottom: '8px' }}>All active Edge Chaos Tokens (JWTs) are invalidated across edge networks with a bounded 5-second nominal revocation SLA (up to 60 seconds under database degraded SWR fallback).</li>
+              <li style={{ marginBottom: '8px' }}>Your Personally Identifiable Information (PII) — including your email, name, and avatar — is permanently and irreversibly purged from our active identity store.</li>
+              <li style={{ marginBottom: '8px' }}>In accordance with GDPR Article 4(5), historical fault injection telemetry records are retained under an opaque, pseudonymized identifier (UUID) for systemic reliability analysis and security audit compliance, without any linkage to your real-world personal identity.</li>
             </ul>
           </section>
 
           <section>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>4. California Privacy Rights (CCPA/CPRA)</h2>
-            <p style={{ color: 'var(--text-primary)' }}>If you are a California resident, you have the right to request access to your data and request its deletion (which is executed via the cryptographic anonymization detailed above). We do not, and will never, sell your personal information.</p>
+            <p style={{ color: 'var(--text-primary)' }}>If you are a California resident, you have the right to request access to your data and request its deletion (which is executed via the cryptographic pseudonymization and PII purge detailed above). We do not, and will never, sell your personal information.</p>
           </section>
         </div>
       </div>
