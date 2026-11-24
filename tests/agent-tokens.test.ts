@@ -47,7 +47,10 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: () => ({
-    env: { AUTH_SECRET: 'test-secret-at-least-32-chars-long-for-jwt' }
+    env: {
+      AUTH_SECRET: 'test-secret-at-least-32-chars-long-for-jwt',
+      CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars-long-for-jwt'
+    }
   })
 }));
 

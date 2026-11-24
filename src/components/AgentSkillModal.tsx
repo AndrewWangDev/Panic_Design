@@ -12,7 +12,6 @@ import {
   FileCode,
   ArrowRight,
   Sparkles,
-  ShieldAlert,
   Download
 } from 'lucide-react';
 import styles from './AgentSkillModal.module.css';
@@ -22,7 +21,7 @@ interface AgentSkillModalProps {
   onClose: () => void;
 }
 
-type TabType = 'cursor' | 'claude' | 'antigravity' | 'raw';
+type TabType = 'cursor' | 'claude' | 'codex' | 'antigravity' | 'raw';
 
 export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('cursor');
@@ -52,9 +51,12 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
     }, 2000);
   };
 
-  const cursorCmd = `mkdir -p .cursor/rules && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .cursor/rules/panic-chaos.mdc`;
-  const claudeCmd = `mkdir -p skills/panic-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o skills/panic-chaos/SKILL.md`;
-  const antigravityCmd = `mkdir -p ~/.gemini/antigravity/skills/panic-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o ~/.gemini/antigravity/skills/panic-chaos/SKILL.md`;
+  const cursorSkillCmd = `mkdir -p .cursor/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .cursor/skills/panic-design-chaos/SKILL.md`;
+  const cursorSharedCmd = `mkdir -p .agents/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .agents/skills/panic-design-chaos/SKILL.md`;
+  const claudeCmd = `mkdir -p .claude/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .claude/skills/panic-design-chaos/SKILL.md`;
+  const codexCmd = `mkdir -p .agents/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .agents/skills/panic-design-chaos/SKILL.md`;
+  const antigravityGlobalCmd = `mkdir -p ~/.gemini/antigravity/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o ~/.gemini/antigravity/skills/panic-design-chaos/SKILL.md`;
+  const antigravityWorkspaceCmd = `mkdir -p .gemini/skills/panic-design-chaos && curl -sSL https://panic.andrewwangdev.com/SKILL.md -o .gemini/skills/panic-design-chaos/SKILL.md`;
   const envCmd = `export PANIC_DESIGN_API_KEY="pd_live_..."`;
   const rawUrl = `https://panic.andrewwangdev.com/SKILL.md`;
 
@@ -93,13 +95,20 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
             onClick={() => setActiveTab('claude')}
           >
             <Terminal size={15} />
-            <span>Claude Code / Codex</span>
+            <span>Claude Code</span>
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'codex' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('codex')}
+          >
+            <Cpu size={15} />
+            <span>Codex / Open Agents</span>
           </button>
           <button
             className={`${styles.tab} ${activeTab === 'antigravity' ? styles.activeTab : ''}`}
             onClick={() => setActiveTab('antigravity')}
           >
-            <Cpu size={15} />
+            <Sparkles size={15} />
             <span>Antigravity</span>
           </button>
           <button
@@ -116,20 +125,43 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
           {activeTab === 'cursor' && (
             <>
               <p className={styles.tabDesc}>
-                Install into your workspace as a Cursor Rule. Cursor Composer & Chat will autonomously invoke the Chaos API to stress-test your client retry policies, timeouts, and fallback logic.
+                Install into your workspace as a standard Agent Skill. Cursor Composer &amp; Chat will automatically discover and invoke the Chaos API to stress-test your client retry policies, timeouts, and fallback logic.
               </p>
 
               <div className={styles.codeSection}>
                 <div className={styles.codeLabel}>
-                  <span>1. Install Workspace Rule (Run in Terminal)</span>
+                  <span>1. Install Workspace Skill (Recommended)</span>
                 </div>
                 <div className={styles.codeBox}>
-                  <div className={styles.codeText}>{cursorCmd}</div>
+                  <div className={styles.codeText}>{cursorSkillCmd}</div>
                   <button
-                    className={`${styles.copyBtn} ${copiedKey === 'cursor-cmd' ? styles.copiedBtn : ''}`}
-                    onClick={() => copyToClipboard(cursorCmd, 'cursor-cmd')}
+                    className={`${styles.copyBtn} ${copiedKey === 'cursor-skill-cmd' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(cursorSkillCmd, 'cursor-skill-cmd')}
                   >
-                    {copiedKey === 'cursor-cmd' ? (
+                    {copiedKey === 'cursor-skill-cmd' ? (
+                      <>
+                        <Check size={13} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} /> Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.codeSection}>
+                <div className={styles.codeLabel}>
+                  <span>Alternative: Cross-Agent Standard (.agents/skills)</span>
+                </div>
+                <div className={styles.codeBox}>
+                  <div className={styles.codeText}>{cursorSharedCmd}</div>
+                  <button
+                    className={`${styles.copyBtn} ${copiedKey === 'cursor-shared-cmd' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(cursorSharedCmd, 'cursor-shared-cmd')}
+                  >
+                    {copiedKey === 'cursor-shared-cmd' ? (
                       <>
                         <Check size={13} /> Copied!
                       </>
@@ -145,7 +177,7 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
               <div className={styles.tipBox}>
                 <strong>💡 Quick Prompt Example:</strong>
                 <div style={{ marginTop: '4px', fontStyle: 'italic', color: '#e4e4e7' }}>
-                  &ldquo;@panic-chaos Inject a 502 Bad Gateway to our mock payment endpoint and verify the circuit breaker opens as expected.&rdquo;
+                  &ldquo;@panic-design-chaos Inject a 502 Bad Gateway to our mock payment endpoint and verify the circuit breaker opens as expected.&rdquo;
                 </div>
               </div>
             </>
@@ -154,12 +186,12 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
           {activeTab === 'claude' && (
             <>
               <p className={styles.tabDesc}>
-                Add to your project’s <code>skills/</code> folder. Claude Code or OpenAI Codex can autonomously mint ephemeral edge tokens and run full fault-injection evaluation suites.
+                Install into your project’s <code>.claude/skills/</code> directory. Claude Code CLI will automatically discover the skill on startup to mint ephemeral edge tokens and run full fault-injection evaluation suites.
               </p>
 
               <div className={styles.codeSection}>
                 <div className={styles.codeLabel}>
-                  <span>1. Install Skill File</span>
+                  <span>1. Install Project Skill</span>
                 </div>
                 <div className={styles.codeBox}>
                   <div className={styles.codeText}>{claudeCmd}</div>
@@ -205,6 +237,60 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
             </>
           )}
 
+          {activeTab === 'codex' && (
+            <>
+              <p className={styles.tabDesc}>
+                Install following the open Agentic RFC standard into <code>.agents/skills/</code>. Universally compatible with OpenAI Codex, custom autonomous agent runtimes, and multi-agent harnesses.
+              </p>
+
+              <div className={styles.codeSection}>
+                <div className={styles.codeLabel}>
+                  <span>1. Install Standard Project Skill</span>
+                </div>
+                <div className={styles.codeBox}>
+                  <div className={styles.codeText}>{codexCmd}</div>
+                  <button
+                    className={`${styles.copyBtn} ${copiedKey === 'codex-cmd' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(codexCmd, 'codex-cmd')}
+                  >
+                    {copiedKey === 'codex-cmd' ? (
+                      <>
+                        <Check size={13} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} /> Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.codeSection}>
+                <div className={styles.codeLabel}>
+                  <span>2. Provide Developer API Key</span>
+                </div>
+                <div className={styles.codeBox}>
+                  <div className={styles.codeText}>{envCmd}</div>
+                  <button
+                    className={`${styles.copyBtn} ${copiedKey === 'codex-env' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(envCmd, 'codex-env')}
+                  >
+                    {copiedKey === 'codex-env' ? (
+                      <>
+                        <Check size={13} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} /> Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
           {activeTab === 'antigravity' && (
             <>
               <p className={styles.tabDesc}>
@@ -213,15 +299,38 @@ export default function AgentSkillModal({ isOpen, onClose }: AgentSkillModalProp
 
               <div className={styles.codeSection}>
                 <div className={styles.codeLabel}>
-                  <span>Install to Antigravity Global Skills</span>
+                  <span>Option A: Install to Antigravity Global Skills</span>
                 </div>
                 <div className={styles.codeBox}>
-                  <div className={styles.codeText}>{antigravityCmd}</div>
+                  <div className={styles.codeText}>{antigravityGlobalCmd}</div>
                   <button
-                    className={`${styles.copyBtn} ${copiedKey === 'antigravity-cmd' ? styles.copiedBtn : ''}`}
-                    onClick={() => copyToClipboard(antigravityCmd, 'antigravity-cmd')}
+                    className={`${styles.copyBtn} ${copiedKey === 'antigravity-global-cmd' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(antigravityGlobalCmd, 'antigravity-global-cmd')}
                   >
-                    {copiedKey === 'antigravity-cmd' ? (
+                    {copiedKey === 'antigravity-global-cmd' ? (
+                      <>
+                        <Check size={13} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} /> Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.codeSection}>
+                <div className={styles.codeLabel}>
+                  <span>Option B: Install to Project Workspace (.gemini/skills)</span>
+                </div>
+                <div className={styles.codeBox}>
+                  <div className={styles.codeText}>{antigravityWorkspaceCmd}</div>
+                  <button
+                    className={`${styles.copyBtn} ${copiedKey === 'antigravity-ws-cmd' ? styles.copiedBtn : ''}`}
+                    onClick={() => copyToClipboard(antigravityWorkspaceCmd, 'antigravity-ws-cmd')}
+                  >
+                    {copiedKey === 'antigravity-ws-cmd' ? (
                       <>
                         <Check size={13} /> Copied!
                       </>

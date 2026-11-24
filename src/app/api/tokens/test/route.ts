@@ -56,9 +56,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing token' }, { status: 400 });
     }
 
-    // Cryptographic JWT verification using CHAOS_JWT_SECRET or AUTH_SECRET
+    // Cryptographic JWT verification using CHAOS_JWT_SECRET (SEC-03-EXT)
     const { env } = getCloudflareContext();
-    const authSecret = (env as any)?.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.CHAOS_JWT_SECRET || process.env.AUTH_SECRET;
+    const isProd = process.env.NODE_ENV === 'production';
+    const chaosSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET;
+    if (!chaosSecret && isProd) {
+      console.error('[SECURITY FATAL] CHAOS_JWT_SECRET is missing in production (SEC-03-EXT).');
+      return NextResponse.json({ error: 'Server misconfiguration: CHAOS_JWT_SECRET required in production' }, { status: 500 });
+    }
+    const authSecret = chaosSecret || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
       return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }

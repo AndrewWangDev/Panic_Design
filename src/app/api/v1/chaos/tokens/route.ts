@@ -279,13 +279,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Cloudflare signing secret (support separate CHAOS_JWT_SECRET with AUTH_SECRET fallback) (SEC-03)
+    // Cloudflare signing secret: enforce dedicated CHAOS_JWT_SECRET in production (SEC-03-EXT)
     const { env } = getCloudflareContext();
-    const hasDedicatedChaosSecret = Boolean((env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET);
-    if (!hasDedicatedChaosSecret && process.env.NODE_ENV === 'production') {
-      console.warn('[SECURITY WARNING] Dedicated CHAOS_JWT_SECRET is missing in production. Falling back to AUTH_SECRET (SEC-03).');
+    const isProd = process.env.NODE_ENV === 'production';
+    const chaosSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET;
+    if (!chaosSecret) {
+      if (isProd) {
+        if (quotaDeducted && userId) await refundQuota(userId, quotaDeductedAt);
+        console.error('[SECURITY FATAL] Dedicated CHAOS_JWT_SECRET is missing in production. Token signing refused (SEC-03-EXT).');
+        return NextResponse.json({ error: 'Server misconfiguration: CHAOS_JWT_SECRET required in production' }, { status: 500 });
+      }
     }
-    const authSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
+    const authSecret = chaosSecret || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
     if (!authSecret) {
       if (quotaDeducted && userId) await refundQuota(userId, quotaDeductedAt);
       console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
