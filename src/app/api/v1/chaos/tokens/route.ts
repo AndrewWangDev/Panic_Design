@@ -196,9 +196,15 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Pre-flight DNS (A + AAAA) SSRF check
+    // Pre-flight DNS (A + AAAA) SSRF check (PD-SEC-02)
     const parsedTarget = parseTargetHost(cleanHost);
     const resolvedHost = await resolveHostIps(cleanHost);
+    if (!parsedTarget?.isIp && resolvedHost.error) {
+      return NextResponse.json({
+        error: 'DNS_RESOLUTION_FAILED',
+        message: 'DNS lookup encountered an error or network timeout. Failing closed for security.'
+      }, { status: 400 });
+    }
     if (!parsedTarget?.isIp && resolvedHost.ips.length === 0) {
       return NextResponse.json({
         error: 'DNS_RESOLUTION_FAILED',
@@ -354,23 +360,28 @@ export async function POST(req: Request) {
       }
     }
 
-    let isWithinCap = true;
     if (activeTokens.length > 5) {
-      isWithinCap = activeTokens.slice(0, 5).some(t => t.id === token.id);
-    }
-    if (!isWithinCap) {
-      await prisma.token.update({
-        where: { id: token.id },
-        data: { isRevoked: true }
-      });
-      if (quotaDeducted && userId) {
-        await refundQuota(userId, quotaDeductedAt);
-        quotaDeducted = false;
+      const surplus = activeTokens.slice(5);
+      const isCurrentSurplus = surplus.some(t => t.id === token.id);
+      // Revoke all surplus tokens deterministically to guarantee <= 5 active tokens (PD-CONC-01)
+      for (const st of surplus) {
+        await prisma.token.update({
+          where: { id: st.id },
+          data: { isRevoked: true }
+        }).catch(() => {});
       }
-      return NextResponse.json({
-        error: 'CONCURRENT_CAP_EXCEEDED',
-        message: 'Maximum limit of 5 concurrent active tokens reached.'
-      }, { status: 403 });
+      if (isCurrentSurplus) {
+        if (quotaDeducted && userId) {
+          try {
+            await refundQuota(userId, quotaDeductedAt);
+          } catch {}
+          quotaDeducted = false;
+        }
+        return NextResponse.json({
+          error: 'CONCURRENT_CAP_EXCEEDED',
+          message: 'Maximum limit of 5 concurrent active tokens reached.'
+        }, { status: 403 });
+      }
     }
 
     // Sign JWT
@@ -439,7 +450,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (quotaDeducted && userId) {
-      await refundQuota(userId, quotaDeductedAt).catch(() => {});
+      try {
+        await refundQuota(userId, quotaDeductedAt);
+      } catch {}
     }
     console.error('Agent Mint Token Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -161,6 +161,11 @@ export default function UserDropdown({ user }: UserDropdownProps) {
             nextHourReset: data.nextHourReset,
             nextDayReset: data.nextDayReset
           });
+          return fetch('/api/user/api-key');
+        })
+        .then(res => res && res.ok ? res.json() : null)
+        .then(keyData => {
+          if (keyData) setApiKeyInfo(keyData);
         })
         .catch(console.error);
     }

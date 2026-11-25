@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { auth } from '@/auth';
 import { validateAutoFillResponse } from '@/lib/ai-schema';
+import { validateSameOrigin } from '@/lib/security';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  if (!validateSameOrigin(req)) {
+    return NextResponse.json({ error: 'Forbidden: Cross-Origin Request Blocked' }, { status: 403 });
+  }
+
   let quotaDeducted = false;
   let quotaDeductedAt: Date | null = null;
   let userId: string | null = null;

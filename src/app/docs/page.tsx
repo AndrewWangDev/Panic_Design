@@ -140,9 +140,9 @@ export default function Docs() {
                 </tr>
                 <tr style={{ borderBottom: '1px solid #222' }}>
                   <td style={{ padding: '16px 0' }}><code style={codeStyle}>customTtl</code></td>
-                  <td style={{ padding: '16px 0', color: '#60a5fa' }}>integer</td>
+                  <td style={{ padding: '16px 0', color: '#60a5fa' }}>number</td>
                   <td style={{ padding: '16px 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>optional</td>
-                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Token TTL in seconds (default: 600).</td>
+                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Token TTL in hours (default: 0.25h / 15m; range: 0.05 to 168 hours).</td>
                 </tr>
               </tbody>
             </table>
@@ -187,11 +187,11 @@ export default function Docs() {
                     &nbsp;&nbsp;<span style={{ color: '#38bdf8' }}>&quot;distribution&quot;</span>: <span style={{ color: '#a3e635' }}>&quot;Normal&quot;</span>,<br/>
                     &nbsp;&nbsp;<span style={{ color: '#38bdf8' }}>&quot;mutilationStrategy&quot;</span>: <span style={{ color: '#a3e635' }}>&quot;Type Poisoning&quot;</span><br/>
                     {'}'}<br/>
-                    <span style={{ color: '#a78bfa' }}>headers</span> = {'{"Authorization": "Bearer $PANIC_TOKEN"}'}<br/>
+                    <span style={{ color: '#a78bfa' }}>headers</span> = {'{"Authorization": "Bearer $PANIC_DESIGN_API_KEY", "Content-Type": "application/json"}'}<br/>
                     <br/>
                     <span style={{ color: '#f472b6' }}>import</span> requests<br/>
                     <span style={{ color: '#a78bfa' }}>response</span> = requests.post(<br/>
-                    &nbsp;&nbsp;<span style={{ color: '#a3e635' }}>&quot;https://panic.andrewwangdev.com/api/tokens/create&quot;</span>,<br/>
+                    &nbsp;&nbsp;<span style={{ color: '#a3e635' }}>&quot;https://panic.andrewwangdev.com/api/v1/chaos/tokens&quot;</span>,<br/>
                     &nbsp;&nbsp;json=payload,<br/>
                     &nbsp;&nbsp;headers=headers<br/>
                     )<br/><br/>
@@ -214,7 +214,7 @@ export default function Docs() {
           <thead>
             <tr style={{ background: '#111', borderBottom: '1px solid #333' }}>
               <th style={{ padding: '16px 24px', fontWeight: 500, color: '#a1a1aa' }}>HTTP Status</th>
-              <th style={{ padding: '16px 24px', fontWeight: 500, color: '#a1a1aa' }}>X-Panic-Error String</th>
+              <th style={{ padding: '16px 24px', fontWeight: 500, color: '#a1a1aa' }}>Error Reason / Code</th>
               <th style={{ padding: '16px 24px', fontWeight: 500, color: '#a1a1aa' }}>Resolution</th>
             </tr>
           </thead>
@@ -332,7 +332,7 @@ curl -i -H "X-Chaos-Token: $CHAOS_JWT" \\
                 <td style={{ padding: '16px 0' }}><code style={codeStyle}>source</code></td>
                 <td style={{ padding: '16px 0', color: '#60a5fa' }}>string</td>
                 <td style={{ padding: '16px 0', color: 'var(--text-secondary)' }}>ALL</td>
-                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Filter by ingress origin: <code style={codeStyle}>WEB_DASHBOARD</code>, <code style={codeStyle}>AGENT_API</code>, <code style={codeStyle}>EDGE_INGRESS</code>.</td>
+                <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Filter by ingress origin: <code style={codeStyle}>WEB_DASHBOARD</code>, <code style={codeStyle}>AGENT_API</code>, <code style={codeStyle}>DIRECT_DATA_PLANE</code>.</td>
               </tr>
               <tr style={{ borderBottom: '1px solid #222' }}>
                 <td style={{ padding: '16px 0' }}><code style={codeStyle}>fault</code></td>

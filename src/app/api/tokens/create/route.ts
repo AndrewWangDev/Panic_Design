@@ -26,6 +26,21 @@ export async function POST(req: Request) {
     }
     userId = session.user.id;
 
+    const prisma = getPrisma();
+
+    // Verify active, non-deleted user early before quota deduction or state modification (PD-BUG-03)
+    const user = await prisma.user.findFirst({
+      where: {
+        id: session.user.id,
+        githubId: { not: null }
+      },
+      select: { jwtSalt: true }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
+    }
+
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.toLowerCase().includes('application/json')) {
       return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 415 });
@@ -111,9 +126,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
     }
 
-    // Pre-flight DNS (A + AAAA) SSRF check before quota deduction or token creation
+    // Pre-flight DNS (A + AAAA) SSRF check before quota deduction or token creation (PD-SEC-02)
     const parsedTarget = parseTargetHost(cleanHost);
     const resolvedHost = await resolveHostIps(cleanHost);
+    if (!parsedTarget?.isIp && resolvedHost.error) {
+      return NextResponse.json({
+        error: 'DNS_RESOLUTION_FAILED',
+        message: 'DNS lookup encountered an error or network timeout. Failing closed for security.'
+      }, { status: 400 });
+    }
     if (!parsedTarget?.isIp && resolvedHost.ips.length === 0) {
       return NextResponse.json({
         error: 'DNS_RESOLUTION_FAILED',
@@ -134,8 +155,6 @@ export async function POST(req: Request) {
     }
     quotaDeducted = true;
     quotaDeductedAt = new Date();
-
-    const prisma = getPrisma();
 
     // Check concurrent active tokens before creation (bounded by 7d max TTL window to prevent N+1 full table scan)
     const maxActiveWindowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -178,32 +197,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'CONCURRENT_CAP_EXCEEDED' }, { status: 403 });
     }
 
-    // Fetch latest user salt (verify active, non-deleted account)
-    const user = await prisma.user.findFirst({
-      where: {
-        id: session.user.id,
-        githubId: { not: null }
-      },
-      select: { jwtSalt: true }
-    });
-
-    if (!user) {
-      if (quotaDeducted && userId) {
-        await refundQuota(userId, quotaDeductedAt);
-        quotaDeducted = false;
-      }
-      return NextResponse.json({ error: 'User not found or account deleted' }, { status: 401 });
-    }
-
     // Default TTL is 15 minutes if not specified
     const ttlHours = customTtl || 0.25;
 
-    // Prepare Token config JSON
+    // Prepare Token config JSON (persisting effLatency for consistent defaults PD-BUG-04)
     const config = JSON.stringify({
       fault,
       scope,
-      latency,
-      jitter,
+      latency: effLatency,
+      jitter: effJitter,
       distribution,
       packetLoss,
       mutilationStrategy,
@@ -255,24 +257,28 @@ export async function POST(req: Request) {
       }
     }
 
-    let isWithinCap = true;
     if (activeTokens.length > 5) {
-      isWithinCap = activeTokens.slice(0, 5).some(t => t.id === token.id);
-    }
-    if (!isWithinCap) {
-      // Revert/revoke the token immediately to maintain strict 5-token cap
-      await prisma.token.update({
-        where: { id: token.id },
-        data: { isRevoked: true }
-      });
-      if (quotaDeducted && userId) {
-        await refundQuota(userId, quotaDeductedAt);
-        quotaDeducted = false;
+      const surplus = activeTokens.slice(5);
+      const isCurrentSurplus = surplus.some(t => t.id === token.id);
+      // Revoke all surplus tokens deterministically to guarantee <= 5 active tokens (PD-CONC-01)
+      for (const st of surplus) {
+        await prisma.token.update({
+          where: { id: st.id },
+          data: { isRevoked: true }
+        }).catch(() => {});
       }
-      return NextResponse.json({
-        error: 'CONCURRENT_CAP_EXCEEDED',
-        message: 'Maximum limit of 5 concurrent active tokens reached.'
-      }, { status: 403 });
+      if (isCurrentSurplus) {
+        if (quotaDeducted && userId) {
+          try {
+            await refundQuota(userId, quotaDeductedAt);
+          } catch {}
+          quotaDeducted = false;
+        }
+        return NextResponse.json({
+          error: 'CONCURRENT_CAP_EXCEEDED',
+          message: 'Maximum limit of 5 concurrent active tokens reached.'
+        }, { status: 403 });
+      }
     }
 
     // Generate JWT using pre-checked authSecret
@@ -295,8 +301,8 @@ export async function POST(req: Request) {
       targetHost: cleanHost,
       scope,
       fault,
-      latency,
-      jitter,
+      latency: effLatency,
+      jitter: effJitter,
       distribution,
       packetLoss,
       mutilationStrategy,
@@ -317,6 +323,22 @@ export async function POST(req: Request) {
       data: { tokenHint }
     });
 
+    // Record Audit Log for Token Minting (PD-BUG-04)
+    if (prisma.chaosLog && typeof prisma.chaosLog.create === 'function') {
+      await prisma.chaosLog.create({
+        data: {
+          userId: session.user.id,
+          targetUrl: `https://${cleanHost}`,
+          injectedFault: 'TOKEN_MINTED',
+          source: 'WEB_DASHBOARD',
+          tokenId: token.id,
+          tokenHint,
+          statusCode: 200,
+          latencyMs: effLatency
+        }
+      }).catch(err => console.warn('Failed to record web token minting audit:', err));
+    }
+
     return NextResponse.json({
       success: true,
       jwt,
@@ -327,7 +349,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     if (quotaDeducted && userId) {
-      await refundQuota(userId, quotaDeductedAt);
+      try {
+        await refundQuota(userId, quotaDeductedAt);
+      } catch {}
       quotaDeducted = false;
     }
     console.error('Create Token Error:', error);

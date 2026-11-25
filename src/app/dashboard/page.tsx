@@ -1275,8 +1275,18 @@ export default function Dashboard() {
   const [targetHostError, setTargetHostError] = useState('');
 
   const validateHost = (host: string) => {
-    if (host && !/^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/.test(host)) {
-      setTargetHostError('Invalid hostname format');
+    if (!host) {
+      setTargetHostError('');
+      return;
+    }
+    // Check if host matches valid domain, IPv4, bracketed IPv6, bare IPv6, or host:port
+    const isDomain = /^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,}(:\d{1,5})?$/.test(host);
+    const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?$/.test(host);
+    const isBracketedIpv6 = /^\[[0-9a-fA-F:]+\](:\d{1,5})?$/.test(host);
+    const isBareIpv6 = host.includes(':') && !host.includes('.') && /^[0-9a-fA-F:]+$/.test(host);
+
+    if (!isDomain && !isIpv4 && !isBracketedIpv6 && !isBareIpv6) {
+      setTargetHostError('Invalid host format (FQDN or IP required)');
     } else {
       setTargetHostError('');
     }
@@ -1428,12 +1438,14 @@ export default function Dashboard() {
     setActiveTokens(activeTokens.map(t => t.id === id ? { ...t, isRevoked: true } : t));
     
     try {
-      await fetch('/api/tokens/revoke', {
+      const res = await fetch('/api/tokens/revoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
       });
-      // Optionally fetchTokens() to ensure state sync, but optimistic is fine for now
+      if (!res.ok) {
+        fetchTokens();
+      }
     } catch (err) {
       console.error('Failed to revoke token:', err);
       // Revert on failure
@@ -2076,7 +2088,7 @@ export default function Dashboard() {
                         },
                         fault_profile: {
                           category: fault === 'latency' ? 'Network Latency' : (fault === '502' ? 'Bad Gateway' : (fault === '504' ? 'Gateway Timeout' : (fault === '429' ? 'Rate Limit' : 'None'))),
-                          mutilation_strategy: mutilationStrategy !== 'None' ? mutilationStrategy : 'Type Poisoning',
+                          mutilation_strategy: mutilationStrategy !== 'None' ? mutilationStrategy : 'None',
                           interception_layer: "L7_PROXY_W2"
                         },
                         algorithm_parameters: {

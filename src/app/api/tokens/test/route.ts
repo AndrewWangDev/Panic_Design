@@ -16,6 +16,9 @@ async function resolveHostIp(rawHost: string): Promise<string | null> {
 }
 
 export async function POST(req: Request) {
+  let quotaDeducted = false;
+  let quotaDeductedAt: Date | null = null;
+  let userId: string | null = null;
   try {
     if (!validateSameOrigin(req)) {
       return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
@@ -95,7 +98,9 @@ export async function POST(req: Request) {
     if (!quota.allowed) {
       return NextResponse.json({ error: 'QUOTA_EXCEEDED', message: quota.reason }, { status: 429 });
     }
-    const quotaDeductedAt = new Date();
+    quotaDeducted = true;
+    quotaDeductedAt = new Date();
+    userId = session.user.id;
 
     const baseUrl = (env as any)?.DATA_PLANE_URL || process.env.DATA_PLANE_URL || 'https://gateway.andrewwangdev.com';
     const gatewayUrl = `${baseUrl.replace(/\/$/, '')}/?token=${encodeURIComponent(token)}`;
@@ -294,6 +299,14 @@ export async function POST(req: Request) {
     });
 
   } catch (err) {
+    if (quotaDeducted && userId && quotaDeductedAt) {
+      try {
+        const { refundQuota } = await import('@/lib/quota');
+        await refundQuota(userId, quotaDeductedAt);
+      } catch (refundErr) {
+        console.error('Failed to refund quota in test error:', refundErr);
+      }
+    }
     console.error('Test injection error:', err);
     return NextResponse.json({ error: 'Failed to run injection test' }, { status: 500 });
   }

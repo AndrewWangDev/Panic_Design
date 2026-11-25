@@ -17,7 +17,8 @@ export async function GET(req: Request) {
       if (activeUser) {
         userId = activeUser.id;
       }
-    } else {
+    }
+    if (!userId) {
       const apiKeyUser = await authenticateApiKey(req.headers.get('authorization'));
       if (apiKeyUser) {
         userId = apiKeyUser.id;

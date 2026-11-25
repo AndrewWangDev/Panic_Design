@@ -221,7 +221,7 @@ describe('Security: resolveHostIps (A + AAAA)', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const res = await resolveHostIps('1.1.1.1:443');
-    expect(res).toEqual({ ips: ['1.1.1.1'], primaryIp: '1.1.1.1' });
+    expect(res).toEqual({ ips: ['1.1.1.1'], primaryIp: '1.1.1.1', error: false });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -246,6 +246,29 @@ describe('Security: resolveHostIps (A + AAAA)', () => {
     expect(res.ips).toContain('fc00::1');
     expect(res.ips.some((ip) => isPrivateIp(ip))).toBe(true);
     expect(res.primaryIp).toBe('104.21.5.19');
+    expect(res.error).toBe(false);
+  });
+
+  it('should flag error when DoH lookup returns HTTP error or network failure', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('DoH network timeout');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await resolveHostIps('flaky.example.com');
+    expect(res.error).toBe(true);
+    expect(res.ips).toEqual([]);
+  });
+
+  it('should detect private IPv4 embedded in NAT64 and Teredo IPv6 prefixes (PD-SEC-03)', () => {
+    expect(isPrivateIp('64:ff9b::127.0.0.1')).toBe(true);
+    expect(isPrivateIp('64:ff9b::10.0.0.1')).toBe(true);
+    expect(isPrivateIp('64:ff9b::192.168.1.1')).toBe(true);
+    expect(isPrivateIp('64:ff9b:1::1')).toBe(true);
+    expect(isPrivateIp('64:ff9b::1.1.1.1')).toBe(false);
+
+    // Teredo prefix with inverted private IPv4
+    expect(isPrivateIp('2001:0:4136:e378:8000:63bf:80ff:ffff')).toBe(true);
   });
 });
 

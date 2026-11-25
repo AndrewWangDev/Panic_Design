@@ -63,7 +63,7 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     mockUserFindUnique.mockResolvedValue({ jwtSalt: 0 });
     mockChaosLogCreate.mockResolvedValue({});
     mockTokenUpdate.mockResolvedValue({});
-    mockResolveHostIps.mockResolvedValue({ ips: ['93.184.216.34'], primaryIp: '93.184.216.34' });
+    mockResolveHostIps.mockResolvedValue({ ips: ['93.184.216.34'], primaryIp: '93.184.216.34', error: false });
     mockTokenCreate.mockImplementation(async ({ data }: any) => ({
       id: 'token_agent_999',
       tokenHint: data.tokenHint,

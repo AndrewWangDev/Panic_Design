@@ -22,8 +22,8 @@ export async function POST(req: Request) {
     const body = await req.json() as any;
     const { id } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'Token ID is required' }, { status: 400 });
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      return NextResponse.json({ error: 'Token ID is required and must be a non-empty string' }, { status: 400 });
     }
 
     const prisma = getPrisma();
@@ -43,6 +43,11 @@ export async function POST(req: Request) {
 
     if (!token || token.userId !== session.user.id) {
       return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
+    }
+
+    // Guard against duplicate revocation logs (PD-BUG-03)
+    if (token.isRevoked) {
+      return NextResponse.json({ success: true, message: 'Token is already revoked' });
     }
 
     // Update token

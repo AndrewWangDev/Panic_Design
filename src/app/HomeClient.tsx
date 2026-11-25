@@ -222,19 +222,19 @@ function HomeContent() {
                     {terminalStep >= 0 && (
                       <div className={styles.typingLine}>
                         <span className={styles.commandPrompt} />
-                        curl -i "https://proxy.panic.design/?token=eyJhbGciOiJI..."
+                        curl -i "https://gateway.andrewwangdev.com/?token=eyJhbGciOiJI..."
                       </div>
                     )}
                     {terminalStep >= 1 && (
                       <>
-                        <div className={styles.outputLine}>* Connected to proxy.panic.design (104.18.2.161) port 443</div>
+                        <div className={styles.outputLine}>* Connected to gateway.andrewwangdev.com (104.18.2.161) port 443</div>
                         <div className={styles.outputLine}>* SSL connection using TLSv1.3 / AEAD-CHACHA20-POLY1305-SHA256</div>
                       </>
                     )}
                     {terminalStep >= 2 && (
                       <>
                         <div className={styles.outputLine}>&gt; GET /?token=eyJhbGciOiJI... HTTP/2</div>
-                        <div className={styles.outputLine}>&gt; Host: proxy.panic.design</div>
+                        <div className={styles.outputLine}>&gt; Host: gateway.andrewwangdev.com</div>
                         <div className={styles.outputLine}>&gt;</div>
                       </>
                     )}
@@ -346,7 +346,7 @@ function HomeContent() {
         <div className={styles.codeBlock}>
           <span className={styles.highlight}>const</span> apiClient = new ApiClient(&#123;<br/>
           {'  '}baseUrl: process.env.NODE_ENV === <span className={styles.string}>&apos;test&apos;</span> <br/>
-          {'    '}? <span className={styles.string}>&apos;https://proxy.panic.design&apos;</span> <br/>
+          {'    '}? <span className={styles.string}>&apos;https://gateway.andrewwangdev.com&apos;</span> <br/>
           {'    '}: <span className={styles.string}>&apos;https://api.production.com&apos;</span>,<br/>
           {'  '}headers: &#123;<br/>
           {'    '}<span className={styles.string}>&apos;Authorization&apos;</span>: <span className={styles.string}>`Bearer $&#123;process.env.PANIC_TOKEN&#125;`</span><br/>

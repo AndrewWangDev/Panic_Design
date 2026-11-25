@@ -61,7 +61,7 @@ CHAOS_JWT_SECRET="your-32-byte-hex-token-signing-secret"
 
 ```bash
 npx prisma generate
-npx wrangler d1 execute DB --local --file=./prisma/schema.sql
+npx wrangler d1 migrations apply DB --local
 ```
 
 ### 4. Run Development Server

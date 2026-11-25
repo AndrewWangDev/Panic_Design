@@ -128,6 +128,35 @@ export function isPrivateIp(ip: string): boolean {
       return isPrivateIpv4Octets(b0, b1, b2, b3);
     }
 
+    // 13. NAT64 Well-Known Prefix (64:ff9b::/96, RFC 6052)
+    if (words[0] === 0x0064 && words[1] === 0xff9b && words[2] === 0 && words[3] === 0 && words[4] === 0 && words[5] === 0) {
+      const b0 = (words[6] >> 8) & 0xff;
+      const b1 = words[6] & 0xff;
+      const b2 = (words[7] >> 8) & 0xff;
+      const b3 = words[7] & 0xff;
+      return isPrivateIpv4Octets(b0, b1, b2, b3);
+    }
+
+    // 14. NAT64 Local-Use Prefix (64:ff9b:1::/48, RFC 8215)
+    if (words[0] === 0x0064 && words[1] === 0xff9b && words[2] === 0x0001) {
+      return true;
+    }
+
+    // 15. Teredo Prefix (2001::/32, RFC 4380)
+    if (words[0] === 0x2001 && words[1] === 0x0000) {
+      const s0 = (words[2] >> 8) & 0xff;
+      const s1 = words[2] & 0xff;
+      const s2 = (words[3] >> 8) & 0xff;
+      const s3 = words[3] & 0xff;
+      if (isPrivateIpv4Octets(s0, s1, s2, s3)) return true;
+
+      const b0 = ((words[6] >> 8) & 0xff) ^ 0xff;
+      const b1 = (words[6] & 0xff) ^ 0xff;
+      const b2 = ((words[7] >> 8) & 0xff) ^ 0xff;
+      const b3 = (words[7] & 0xff) ^ 0xff;
+      return isPrivateIpv4Octets(b0, b1, b2, b3);
+    }
+
     return false;
   }
 
@@ -380,15 +409,15 @@ export function isValidTargetHost(rawHost: string): boolean {
  * Resolves all IPv4 (A) and IPv6 (AAAA) addresses for a target host via Cloudflare DoH.
  * If the host is already a raw IP literal, returns it directly without network DNS lookup.
  */
-export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; primaryIp: string | null }> {
+export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; primaryIp: string | null; error: boolean }> {
   const parsed = parseTargetHost(rawHost);
-  if (!parsed) return { ips: [], primaryIp: null };
+  if (!parsed) return { ips: [], primaryIp: null, error: false };
 
   if (parsed.isIp) {
-    return { ips: [parsed.hostname], primaryIp: parsed.hostname };
+    return { ips: [parsed.hostname], primaryIp: parsed.hostname, error: false };
   }
 
-  const queryDns = async (qtype: 'A' | 'AAAA'): Promise<string[]> => {
+  const queryDns = async (qtype: 'A' | 'AAAA'): Promise<{ ips: string[]; error: boolean }> => {
     try {
       const dnsRes = await fetch(
         `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(parsed.hostname)}&type=${qtype}`,
@@ -397,24 +426,33 @@ export async function resolveHostIps(rawHost: string): Promise<{ ips: string[]; 
           signal: AbortSignal.timeout(3000)
         }
       );
+      if (!dnsRes.ok) {
+        return { ips: [], error: true };
+      }
       const dnsData = (await dnsRes.json()) as {
         Status?: number;
         Answer?: Array<{ type: number; data: string }>;
       };
       if (dnsData.Status === 0 && Array.isArray(dnsData.Answer)) {
         const expectedType = qtype === 'A' ? 1 : 28;
-        return dnsData.Answer.filter(a => a.type === expectedType && typeof a.data === 'string').map(a => a.data);
+        const ips = dnsData.Answer.filter(a => a.type === expectedType && typeof a.data === 'string').map(a => a.data);
+        return { ips, error: false };
       }
+      if (dnsData.Status === 0 || dnsData.Status === 3) {
+        return { ips: [], error: false };
+      }
+      return { ips: [], error: true };
     } catch (err) {
       console.warn(`DoH ${qtype} resolution error:`, err);
+      return { ips: [], error: true };
     }
-    return [];
   };
 
-  const [v4List, v6List] = await Promise.all([queryDns('A'), queryDns('AAAA')]);
-  const ips = [...v4List, ...v6List];
-  const primaryIp = v4List[0] || v6List[0] || null;
-  return { ips, primaryIp };
+  const [v4Res, v6Res] = await Promise.all([queryDns('A'), queryDns('AAAA')]);
+  const hasError = v4Res.error || v6Res.error;
+  const ips = [...v4Res.ips, ...v6Res.ips];
+  const primaryIp = v4Res.ips[0] || v6Res.ips[0] || null;
+  return { ips, primaryIp, error: hasError };
 }
 
 /**
