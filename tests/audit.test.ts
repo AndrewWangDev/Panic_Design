@@ -98,6 +98,8 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
     expect(json.logs[0].faultPolicy.fault).toBe('502');
     expect(json.summary.totalInjections).toBe(42);
     expect(json.summary.todayInjections).toBe(5);
+    expect(json.summary.sampledRecords).toBe(2);
+    expect(json.summary.isSampled).toBe(false);
     expect(json.summary.topTargets[0]).toEqual({ target: 'api.example.com', count: 2 });
   });
 
@@ -322,6 +324,7 @@ describe('Audit Logs API (GET /api/audit/logs)', () => {
       totalPages: 2
     });
     expect(json.summary.totalInjections).toBe(1500);
+    expect(json.summary.isSampled).toBe(true);
     expect(mockChaosLogCount).toHaveBeenCalledWith({
       where: expect.objectContaining({ userId: 'user_session_1', injectedFault: '502' })
     });

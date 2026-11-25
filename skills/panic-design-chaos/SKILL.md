@@ -70,7 +70,7 @@ Obtain your Developer API Key from the Panic Design web interface:
   {
     "success": true,
     "tokenId": "cly1234567890",
-    "tokenHint": "api.example.com...",
+    "tokenHint": "eyJhbGci...9qu4",
     "jwtToken": "eyJhbGciOiJIUzI1NiIs...",
     "gatewayUrl": "https://gateway.andrewwangdev.com",
     "expiresAt": "2026-11-16T16:30:00.000Z",

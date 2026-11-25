@@ -252,7 +252,9 @@ export async function GET(req: Request) {
         totalInjections: totalCount,
         todayInjections: todayCount,
         topTargets: sortedTargets,
-        faultCounts
+        faultCounts,
+        sampledRecords: allUserLogs.length,
+        isSampled: totalCount > 500
       }
     });
   } catch (error) {

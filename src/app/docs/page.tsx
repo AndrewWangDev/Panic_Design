@@ -80,7 +80,7 @@ export default function Docs() {
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px' }}>
               <span style={{ background: '#166534', color: '#4ade80', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '1px' }}>POST</span>
-              <code style={{ fontFamily: 'var(--font-mono), monospace', color: 'var(--text-primary)', fontSize: '1.1rem' }}>/api/tokens/create</code>
+              <code style={{ fontFamily: 'var(--font-mono), monospace', color: 'var(--text-primary)', fontSize: '1.1rem' }}>/api/v1/chaos/tokens</code>
             </div>
 
             <h3 style={{ fontSize: '1.2rem', color: 'var(--text-primary)', marginBottom: '16px' }}>Request Body Schema</h3>
@@ -142,7 +142,7 @@ export default function Docs() {
                   <td style={{ padding: '16px 0' }}><code style={codeStyle}>customTtl</code></td>
                   <td style={{ padding: '16px 0', color: '#60a5fa' }}>number</td>
                   <td style={{ padding: '16px 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>optional</td>
-                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Token TTL in hours (default: 0.25h / 15m; range: 0.05 to 168 hours).</td>
+                  <td style={{ padding: '16px 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>Token TTL in hours (0.05 to 2h for M2M API, default 0.25h; up to 168h via Web Console).</td>
                 </tr>
               </tbody>
             </table>
@@ -221,27 +221,27 @@ export default function Docs() {
           <tbody>
             <tr style={{ borderBottom: '1px solid #222' }}>
               <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>403 Forbidden</td>
-              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>SECURITY_VIOLATION</code></td>
-              <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Invalid token or Turnstile challenge failed. Check token TTL.</td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>forbidden / invalid_token</code></td>
+              <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Invalid or revoked chaos token, or signature verification failure.</td>
             </tr>
             <tr style={{ borderBottom: '1px solid #222' }}>
               <td style={{ padding: '20px 24px', color: '#f59e0b', fontWeight: 600 }}>429 Too Many Requests</td>
-              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>QUOTA_EXCEEDED</code></td>
-              <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Concurrent active token limit reached (Max 5). Wait for expiration.</td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>rate_limit_exceeded</code></td>
+              <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Injected simulated rate limit or client IP concurrency limit reached.</td>
             </tr>
             <tr style={{ borderBottom: '1px solid #222' }}>
               <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>502 Bad Gateway</td>
-              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>EDGE_ROUTING_FAILED</code></td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>bad_gateway</code></td>
               <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Simulated or real upstream failure during chaotic injection.</td>
             </tr>
             <tr style={{ borderBottom: '1px solid #222' }}>
               <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>504 Gateway Timeout</td>
-              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>UPSTREAM_TIMEOUT</code></td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>gateway_timeout</code></td>
               <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Upstream server failed to respond within the Edge TTL threshold.</td>
             </tr>
             <tr>
               <td style={{ padding: '20px 24px', color: '#ef4444', fontWeight: 600 }}>444 No Response</td>
-              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>CONNECTION_CLOSED_WITHOUT_RESPONSE</code></td>
+              <td style={{ padding: '20px 24px' }}><code style={codeStyle}>No body (connection dropped)</code></td>
               <td style={{ padding: '20px 24px', color: '#d4d4d8', lineHeight: 1.5 }}>Simulated instant socket disconnect without sending HTTP response headers or payload.</td>
             </tr>
           </tbody>
@@ -360,7 +360,7 @@ curl -i -H "X-Chaos-Token: $CHAOS_JWT" \\
             lineHeight: 1.6,
             overflowX: 'auto'
           }}>
-{`curl -s "https://panic.andrewwangdev.com/api/audit/logs?limit=10&source=EDGE_INGRESS" \\
+{`curl -s "https://panic.andrewwangdev.com/api/audit/logs?limit=10&source=DIRECT_DATA_PLANE" \\
   -H "Authorization: Bearer $PANIC_DESIGN_API_KEY"`}
           </pre>
         </div>

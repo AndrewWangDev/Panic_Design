@@ -24,16 +24,6 @@ CREATE TABLE IF NOT EXISTS "Token" (
     CONSTRAINT "Token_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- CreateTable Usage
-CREATE TABLE IF NOT EXISTS "Usage" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "userId" TEXT NOT NULL,
-    "month" TEXT NOT NULL,
-    "requestCount" INTEGER NOT NULL DEFAULT 0,
-    "limit" INTEGER NOT NULL DEFAULT 10000,
-    CONSTRAINT "Usage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
 -- CreateTable ChaosLog
 CREATE TABLE IF NOT EXISTS "ChaosLog" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -47,5 +37,4 @@ CREATE TABLE IF NOT EXISTS "ChaosLog" (
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
-CREATE UNIQUE INDEX IF NOT EXISTS "Usage_userId_month_key" ON "Usage"("userId", "month");
 CREATE INDEX IF NOT EXISTS "ChaosLog_userId_executedAt_idx" ON "ChaosLog"("userId", "executedAt");

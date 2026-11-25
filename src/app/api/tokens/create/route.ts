@@ -232,48 +232,70 @@ export async function POST(req: Request) {
       },
       select: {
         id: true,
+        tokenHint: true,
         createdAt: true,
         config: true
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     });
 
-    const activeTokens: { id: string }[] = [];
+    interface ActiveTokenRecord {
+      id: string;
+      isConfirmed: boolean;
+      createdAtMs: number;
+    }
+
+    const activeTokens: ActiveTokenRecord[] = [];
     const postNowMs = Date.now();
     for (const t of postCheckTokens) {
+      let ttlH = 0.25;
       try {
         const conf = JSON.parse(t.config);
-        const ttlH = conf.ttlHours || conf.ttl || 0.25;
-        const expMs = new Date(t.createdAt).getTime() + (ttlH * 60 * 60 * 1000);
-        if (expMs > postNowMs) {
-          activeTokens.push(t);
-        }
+        ttlH = conf.ttlHours || conf.ttl || 0.25;
       } catch {
-        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
-        const expMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
-        if (expMs > postNowMs) {
-          activeTokens.push(t);
-        }
+        ttlH = 0.25;
+      }
+      const expMs = new Date(t.createdAt).getTime() + (ttlH * 60 * 60 * 1000);
+      if (expMs > postNowMs) {
+        activeTokens.push({
+          id: t.id,
+          isConfirmed: Boolean(t.tokenHint && t.tokenHint !== ''),
+          createdAtMs: new Date(t.createdAt).getTime()
+        });
       }
     }
 
     if (activeTokens.length > 5) {
-      const surplus = activeTokens.slice(5);
-      const isCurrentSurplus = surplus.some(t => t.id === token.id);
-      // Revoke all surplus tokens deterministically to guarantee <= 5 active tokens (PD-CONC-01)
-      for (const st of surplus) {
+      // Deterministic prioritization:
+      // 1. Confirmed tokens (tokenHint !== '') take absolute priority over pending unconfirmed tokens (tokenHint === '').
+      // 2. Earlier createdAtMs first.
+      // 3. Smaller id first (deterministic tie-breaker).
+      activeTokens.sort((a, b) => {
+        if (a.isConfirmed !== b.isConfirmed) {
+          return a.isConfirmed ? -1 : 1;
+        }
+        if (a.createdAtMs !== b.createdAtMs) {
+          return a.createdAtMs - b.createdAtMs;
+        }
+        return a.id.localeCompare(b.id);
+      });
+
+      const allowedSlotIds = new Set(activeTokens.slice(0, 5).map(t => t.id));
+      if (!allowedSlotIds.has(token.id)) {
+        // Current token did not secure one of the top 5 active slots.
+        // Self-revoke ONLY this token to eliminate PD-NEW-01 silent revocation regression.
         await prisma.token.update({
-          where: { id: st.id },
+          where: { id: token.id },
           data: { isRevoked: true }
         }).catch(() => {});
-      }
-      if (isCurrentSurplus) {
+
         if (quotaDeducted && userId) {
           try {
             await refundQuota(userId, quotaDeductedAt);
           } catch {}
           quotaDeducted = false;
         }
+
         return NextResponse.json({
           error: 'CONCURRENT_CAP_EXCEEDED',
           message: 'Maximum limit of 5 concurrent active tokens reached.'

@@ -537,6 +537,117 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
       // Exactly 2 succeeded, the remaining 4 were blocked/rolled back
       const successful = statuses.filter(s => s === 200).length;
       expect(successful).toBe(2);
+
+      // Verify that all 3 initial confirmed tokens were NEVER revoked (PD-NEW-01)
+      for (let i = 1; i <= 3; i++) {
+        const initialTok = tokenDb.find(t => t.id === `tok_initial_${i}`);
+        expect(initialTok?.isRevoked).toBe(false);
+      }
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
+  });
+
+  it('self-revokes only the incoming token when cap is exceeded without revoking existing confirmed tokens (PD-NEW-01)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user_1' } });
+    mockCheckQuota.mockResolvedValue({ allowed: true });
+
+    type MockToken = {
+      id: string;
+      userId: string;
+      targetHost: string;
+      config: string;
+      tokenHint: string;
+      issuedWithSalt: number;
+      isRevoked: boolean;
+      createdAt: Date;
+    };
+
+    const tokenDb: MockToken[] = [];
+    // 5 confirmed active tokens already exist
+    for (let i = 1; i <= 5; i++) {
+      tokenDb.push({
+        id: `tok_active_${i}`,
+        userId: 'user_1',
+        targetHost: 'example.com',
+        config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+        tokenHint: `hint_${i}`,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date(Date.now() - (60 - i) * 1000)
+      });
+    }
+
+    let findManyCallCount = 0;
+    mockTokenFindMany.mockImplementation(async () => {
+      findManyCallCount++;
+      // Pre-check sees only 4 tokens (simulating concurrent window where pre-check passes)
+      if (findManyCallCount === 1) {
+        return tokenDb.slice(0, 4).map(t => ({ ...t }));
+      }
+      // Post-check sees all tokens including newly created ones
+      const tokens = tokenDb.filter(t => !t.isRevoked).map(t => ({ ...t }));
+      tokens.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+      return tokens;
+    });
+
+    let revokedTokenId = '';
+    mockTokenCreate.mockImplementation(async ({ data }: any) => {
+      const newToken: MockToken = {
+        id: 'tok_surplus_new',
+        userId: data.userId,
+        targetHost: data.targetHost,
+        config: data.config,
+        tokenHint: data.tokenHint,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date()
+      };
+      tokenDb.push(newToken);
+      return { ...newToken };
+    });
+
+    mockTokenUpdate.mockImplementation(async ({ where, data }: any) => {
+      const t = tokenDb.find(x => x.id === where.id);
+      if (t) {
+        if (data.isRevoked !== undefined) {
+          t.isRevoked = data.isRevoked;
+          revokedTokenId = where.id;
+        }
+      }
+      return t ? { ...t } : null;
+    });
+
+    const prevEnv = process.env.NODE_ENV;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+
+    try {
+      const { POST } = await import('../src/app/api/tokens/create/route');
+      const res = await POST(new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+        method: 'POST',
+        headers: {
+          host: 'panic.andrewwangdev.com',
+          origin: 'https://panic.andrewwangdev.com',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          targetHost: '1.1.1.1',
+          fault: '502',
+          customTtl: 1
+        })
+      }));
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.error).toBe('CONCURRENT_CAP_EXCEEDED');
+
+      // Only the surplus new token must have been revoked!
+      expect(revokedTokenId).toBe('tok_surplus_new');
+      // All 5 existing confirmed tokens must remain unrevoked
+      for (let i = 1; i <= 5; i++) {
+        const tok = tokenDb.find(t => t.id === `tok_active_${i}`);
+        expect(tok?.isRevoked).toBe(false);
+      }
     } finally {
       (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
     }

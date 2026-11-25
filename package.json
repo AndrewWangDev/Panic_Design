@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npx prisma generate && next build",
+    "deploy": "npx @opennextjs/cloudflare build && wrangler deploy",
     "start": "next start",
     "lint": "eslint src/",
     "test": "vitest run"
