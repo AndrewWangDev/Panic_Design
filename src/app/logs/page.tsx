@@ -35,6 +35,8 @@ interface AuditSummary {
   todayInjections: number;
   topTargets: Array<{ target: string; count: number }>;
   faultCounts: Record<string, number>;
+  sampledRecords?: number;
+  isSampled?: boolean;
 }
 
 const SOURCE_OPTIONS = [
@@ -338,11 +340,23 @@ export default function AuditLogsPage() {
           </div>
           <div className={styles.kpiSub}>
             {topHostCount > 0 ? `${topHostCount} requests directed here` : 'No traffic recorded'}
+            {summary?.isSampled && (
+              <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                Sampled from recent {summary.sampledRecords ?? 500} records
+              </span>
+            )}
           </div>
         </div>
 
         <div className={styles.kpiCard}>
-          <div className={styles.kpiLabel}>Active Fault Breakdown</div>
+          <div className={styles.kpiLabel}>
+            Active Fault Breakdown
+            {summary?.isSampled && (
+              <span style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '6px', fontWeight: 'normal' }}>
+                (recent {summary.sampledRecords ?? 500})
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
             {Object.entries(summary?.faultCounts || {}).slice(0, 8).map(([f, count]) => {
               const { label, badgeClass } = getBreakdownBadgeProps(f, count);

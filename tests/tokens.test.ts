@@ -652,4 +652,108 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
       (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
     }
   });
+
+  it('prevents TOCTOU overshoot when 2 concurrent requests arrive with 4 existing active tokens (PD-CONC-01)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user_1' } });
+    mockCheckQuota.mockResolvedValue({ allowed: true });
+
+    type MockToken = {
+      id: string;
+      userId: string;
+      targetHost: string;
+      config: string;
+      tokenHint: string;
+      issuedWithSalt: number;
+      isRevoked: boolean;
+      createdAt: Date;
+    };
+
+    const tokenDb: MockToken[] = [];
+    // 4 active tokens already exist
+    for (let i = 1; i <= 4; i++) {
+      tokenDb.push({
+        id: `tok_exist_${i}`,
+        userId: 'user_1',
+        targetHost: 'example.com',
+        config: JSON.stringify({ fault: '502', ttlHours: 1 }),
+        tokenHint: `hint_${i}`,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date(Date.now() - (50 - i) * 1000)
+      });
+    }
+
+    let nextId = 1;
+    mockTokenFindMany.mockImplementation(async () => {
+      const tokens = tokenDb.filter(t => !t.isRevoked).map(t => ({ ...t }));
+      tokens.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+      return tokens;
+    });
+
+    mockTokenCreate.mockImplementation(async ({ data }: any) => {
+      const newToken: MockToken = {
+        id: `tok_concurrent_${nextId++}`,
+        userId: data.userId,
+        targetHost: data.targetHost,
+        config: data.config,
+        tokenHint: data.tokenHint,
+        issuedWithSalt: 0,
+        isRevoked: false,
+        createdAt: new Date()
+      };
+      tokenDb.push(newToken);
+      return { ...newToken };
+    });
+
+    mockTokenUpdate.mockImplementation(async ({ where, data }: any) => {
+      const t = tokenDb.find(x => x.id === where.id);
+      if (t) {
+        if (data.isRevoked !== undefined) t.isRevoked = data.isRevoked;
+        if (data.tokenHint !== undefined) t.tokenHint = data.tokenHint;
+      }
+      return t ? { ...t } : null;
+    });
+
+    const prevEnv = process.env.NODE_ENV;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+
+    try {
+      const { POST } = await import('../src/app/api/tokens/create/route');
+      const [res1, res2] = await Promise.all([
+        POST(new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+          method: 'POST',
+          headers: {
+            host: 'panic.andrewwangdev.com',
+            origin: 'https://panic.andrewwangdev.com',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ targetHost: '1.1.1.1', fault: '502', customTtl: 1 })
+        })),
+        POST(new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+          method: 'POST',
+          headers: {
+            host: 'panic.andrewwangdev.com',
+            origin: 'https://panic.andrewwangdev.com',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ targetHost: '1.1.1.1', fault: '502', customTtl: 1 })
+        }))
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      // Exactly one succeeds (200) and the other is rejected (403)
+      expect(statuses).toEqual([200, 403]);
+
+      // Exactly 5 unrevoked active tokens exist in DB
+      const activeInDb = tokenDb.filter(t => !t.isRevoked);
+      expect(activeInDb.length).toBe(5);
+
+      // All 4 initial tokens are untouched
+      for (let i = 1; i <= 4; i++) {
+        expect(tokenDb.find(t => t.id === `tok_exist_${i}`)?.isRevoked).toBe(false);
+      }
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
+  });
 });

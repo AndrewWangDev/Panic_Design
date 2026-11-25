@@ -148,6 +148,15 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // Resolve W3 (Target Host) coordinates with 300ms fail-fast timeout and 24h LRU caching before DB writes
+    let w3: [number, number] | undefined = undefined;
+    if (resolvedHost.primaryIp) {
+      const coords = await resolveGeoCoordinates(resolvedHost.primaryIp);
+      if (coords) {
+        w3 = coords;
+      }
+    }
+
     // Check Quota Limit
     const quota = await checkAndUpdateQuota(session.user.id);
     if (!quota.allowed) {
@@ -223,7 +232,40 @@ export async function POST(req: Request) {
       }
     });
 
-    // Post-creation TOCTOU concurrency check: verify active count does not exceed limit (bounded by 7d window)
+    // Generate JWT using pre-checked authSecret
+    const secret = new TextEncoder().encode(authSecret);
+    
+    // Convert ttlHours to seconds string for expiration
+    const expSeconds = Math.floor(ttlHours * 3600);
+
+    const jwt = await new SignJWT({
+      tokenId: token.id,
+      targetHost: cleanHost,
+      scope,
+      fault,
+      latency: effLatency,
+      jitter: effJitter,
+      distribution,
+      packetLoss,
+      mutilationStrategy,
+      userId: session.user.id,
+      jwtSalt: user.jwtSalt,
+      issuedWithSalt: user.jwtSalt,
+      w3
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt()
+      .setExpirationTime(`${expSeconds}s`)
+      .sign(secret);
+
+    // Commit token hint to DB
+    const tokenHint = `eyJhbGci...${jwt.slice(-4)}`;
+    await prisma.token.update({
+      where: { id: token.id },
+      data: { tokenHint }
+    });
+
+    // Post-confirmation Gatekeeper Check: verify active count does not exceed limit (bounded by 7d window) (PD-CONC-01)
     const postCheckTokens = await prisma.token.findMany({
       where: {
         userId: session.user.id,
@@ -302,48 +344,6 @@ export async function POST(req: Request) {
         }, { status: 403 });
       }
     }
-
-    // Generate JWT using pre-checked authSecret
-    const secret = new TextEncoder().encode(authSecret);
-    
-    // Convert ttlHours to seconds string for expiration
-    const expSeconds = Math.floor(ttlHours * 3600);
-
-    // Resolve W3 (Target Host) coordinates with 300ms fail-fast timeout and 24h LRU caching.
-    let w3: [number, number] | undefined = undefined;
-    if (resolvedHost.primaryIp) {
-      const coords = await resolveGeoCoordinates(resolvedHost.primaryIp);
-      if (coords) {
-        w3 = coords;
-      }
-    }
-
-    const jwt = await new SignJWT({
-      tokenId: token.id,
-      targetHost: cleanHost,
-      scope,
-      fault,
-      latency: effLatency,
-      jitter: effJitter,
-      distribution,
-      packetLoss,
-      mutilationStrategy,
-      userId: session.user.id,
-      jwtSalt: user.jwtSalt,
-      issuedWithSalt: user.jwtSalt,
-      w3
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setIssuedAt()
-      .setExpirationTime(`${expSeconds}s`)
-      .sign(secret);
-
-    // Update token hint
-    const tokenHint = `eyJhbGci...${jwt.slice(-4)}`;
-    await prisma.token.update({
-      where: { id: token.id },
-      data: { tokenHint }
-    });
 
     // Record Audit Log for Token Minting (PD-BUG-04)
     if (prisma.chaosLog && typeof prisma.chaosLog.create === 'function') {

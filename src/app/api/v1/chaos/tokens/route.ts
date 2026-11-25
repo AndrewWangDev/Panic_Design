@@ -326,7 +326,39 @@ export async function POST(req: Request) {
       }
     });
 
-    // Strict post-creation TOCTOU concurrency check (Cap = 5, bounded by 7d window)
+    // Sign JWT
+    const expSeconds = Math.floor(ttlHours * 3600);
+    const secret = new TextEncoder().encode(authSecret);
+
+    const jwtToken = await new SignJWT({
+      tokenId: token.id,
+      targetHost: cleanHost,
+      fault,
+      scope,
+      latency,
+      jitter,
+      distribution,
+      packetLoss,
+      mutilationStrategy,
+      ttlHours,
+      source: 'AGENT_API',
+      userId: user.id,
+      jwtSalt: userRecord.jwtSalt,
+      issuedWithSalt: userRecord.jwtSalt
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuedAt()
+      .setExpirationTime(`${expSeconds}s`)
+      .sign(secret);
+
+    // Compute authentic JWT tokenHint matching Web UI convention and commit to DB
+    const tokenHint = `eyJhbGci...${jwtToken.slice(-4)}`;
+    await prisma.token.update({
+      where: { id: token.id },
+      data: { tokenHint }
+    });
+
+    // Strict post-confirmation TOCTOU concurrency check (Cap = 5, bounded by 7d window) (PD-CONC-01)
     const postCheckTokens = await prisma.token.findMany({
       where: {
         userId: user.id,
@@ -405,38 +437,6 @@ export async function POST(req: Request) {
         }, { status: 403 });
       }
     }
-
-    // Sign JWT
-    const expSeconds = Math.floor(ttlHours * 3600);
-    const secret = new TextEncoder().encode(authSecret);
-
-    const jwtToken = await new SignJWT({
-      tokenId: token.id,
-      targetHost: cleanHost,
-      fault,
-      scope,
-      latency,
-      jitter,
-      distribution,
-      packetLoss,
-      mutilationStrategy,
-      ttlHours,
-      source: 'AGENT_API',
-      userId: user.id,
-      jwtSalt: userRecord.jwtSalt,
-      issuedWithSalt: userRecord.jwtSalt
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setIssuedAt()
-      .setExpirationTime(`${expSeconds}s`)
-      .sign(secret);
-
-    // Compute authentic JWT tokenHint matching Web UI convention
-    const tokenHint = `eyJhbGci...${jwtToken.slice(-4)}`;
-    await prisma.token.update({
-      where: { id: token.id },
-      data: { tokenHint }
-    });
 
     // Record Audit Log (Token Minted via Agent)
     const rayHeader = req.headers.get('cf-ray') || '';
