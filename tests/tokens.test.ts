@@ -33,13 +33,15 @@ vi.mock('@/lib/prisma', () => ({
   }),
 }));
 
+const mockCfEnv: Record<string, unknown> = {
+  AUTH_SECRET: 'test-secret-for-vitest-at-least-32-chars',
+  TURNSTILE_SECRET_KEY: 'test-turnstile-secret-key',
+  CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars'
+};
+
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: () => ({
-    env: { 
-      AUTH_SECRET: 'test-secret-for-vitest-at-least-32-chars',
-      TURNSTILE_SECRET_KEY: 'test-turnstile-secret-key',
-      CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars'
-    },
+    env: mockCfEnv,
   }),
 }));
 
@@ -754,6 +756,182 @@ describe('POST /api/tokens/revoke & /api/tokens/test security guards (PD-AUDIT-S
       }
     } finally {
       (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
+  });
+
+  it('strictly refuses missing CHAOS_JWT_SECRET even in non-production environments (no AUTH_SECRET fallback)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user_1' } });
+    mockCheckQuota.mockResolvedValue({ allowed: true });
+
+    const prevEnv = process.env.NODE_ENV;
+    const prevSecret = process.env.CHAOS_JWT_SECRET;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+    delete process.env.CHAOS_JWT_SECRET;
+    delete mockCfEnv.CHAOS_JWT_SECRET;
+
+    try {
+      const { POST: createPost } = await import('../src/app/api/tokens/create/route');
+      const { POST: testPost } = await import('../src/app/api/tokens/test/route');
+
+      const createRes = await createPost(new Request('https://panic.andrewwangdev.com/api/tokens/create', {
+        method: 'POST',
+        headers: {
+          host: 'panic.andrewwangdev.com',
+          origin: 'https://panic.andrewwangdev.com',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ targetHost: '1.1.1.1', fault: '502', customTtl: 1 })
+      }));
+      expect(createRes.status).toBe(500);
+      expect(mockCheckQuota).not.toHaveBeenCalled();
+
+      const testRes = await testPost(new Request('https://panic.andrewwangdev.com/api/tokens/test', {
+        method: 'POST',
+        headers: {
+          host: 'panic.andrewwangdev.com',
+          origin: 'https://panic.andrewwangdev.com',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ token: 'eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoxfQ.sig' })
+      }));
+      expect(testRes.status).toBe(500);
+    } finally {
+      mockCfEnv.CHAOS_JWT_SECRET = 'test-chaos-jwt-secret-at-least-32-chars';
+      if (prevSecret !== undefined) process.env.CHAOS_JWT_SECRET = prevSecret;
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
+  });
+
+  it('enforces atomic active token cap on real SQLite D1 engine regardless of Isolate clock skew or inverted CUID order', async () => {
+    const { mintTokenWithCap } = await import('../src/lib/tokenMinting');
+    const sqliteMod = (process as unknown as {
+      getBuiltinModule?: (id: string) => { DatabaseSync: new (path: string) => any } | undefined;
+    }).getBuiltinModule?.('node:sqlite');
+
+    const nowIso = new Date().toISOString().replace('Z', '+00:00');
+    const expiredIso = new Date(Date.now() - 2 * 3600 * 1000).toISOString().replace('Z', '+00:00');
+
+    type SqliteRow = { id: string; userId: string; targetHost: string; config: string; tokenHint: string; isRevoked: number; issuedWithSalt: number; createdAt: string };
+    const fallbackRows: SqliteRow[] = [];
+    const db = sqliteMod ? new sqliteMod.DatabaseSync(':memory:') : null;
+
+    if (db) {
+      db.exec(`
+        CREATE TABLE "Token" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "userId" TEXT NOT NULL,
+          "targetHost" TEXT NOT NULL,
+          "config" TEXT NOT NULL,
+          "tokenHint" TEXT NOT NULL,
+          "isRevoked" BOOLEAN NOT NULL DEFAULT false,
+          "issuedWithSalt" INTEGER NOT NULL,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      const insertSeed = db.prepare(
+        'INSERT INTO "Token" ("id", "userId", "targetHost", "config", "tokenHint", "isRevoked", "issuedWithSalt", "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      );
+      for (let i = 1; i <= 4; i++) {
+        insertSeed.run(`cm_seed_${i}`, 'u1', '1.1.1.1', JSON.stringify({ ttlHours: 1 }), `hint_${i}`, 0, 0, nowIso);
+      }
+      insertSeed.run('cm_expired', 'u1', '1.1.1.1', JSON.stringify({ ttlHours: 1 }), 'hint_exp', 0, 0, expiredIso);
+      insertSeed.run('cm_revoked', 'u1', '1.1.1.1', JSON.stringify({ ttlHours: 1 }), 'hint_rev', 1, 0, nowIso);
+      insertSeed.run('cm_corrupt_old', 'u1', '1.1.1.1', '{bad-json', 'hint_bad', 0, 0, expiredIso);
+    } else {
+      for (let i = 1; i <= 4; i++) {
+        fallbackRows.push({ id: `cm_seed_${i}`, userId: 'u1', targetHost: '1.1.1.1', config: JSON.stringify({ ttlHours: 1 }), tokenHint: `hint_${i}`, isRevoked: 0, issuedWithSalt: 0, createdAt: nowIso });
+      }
+      fallbackRows.push({ id: 'cm_expired', userId: 'u1', targetHost: '1.1.1.1', config: JSON.stringify({ ttlHours: 1 }), tokenHint: 'hint_exp', isRevoked: 0, issuedWithSalt: 0, createdAt: expiredIso });
+      fallbackRows.push({ id: 'cm_revoked', userId: 'u1', targetHost: '1.1.1.1', config: JSON.stringify({ ttlHours: 1 }), tokenHint: 'hint_rev', isRevoked: 1, issuedWithSalt: 0, createdAt: nowIso });
+      fallbackRows.push({ id: 'cm_corrupt_old', userId: 'u1', targetHost: '1.1.1.1', config: '{bad-json', tokenHint: 'hint_bad', isRevoked: 0, issuedWithSalt: 0, createdAt: expiredIso });
+    }
+
+    const d1Adapter = {
+      prepare: (query: string) => ({
+        bind: (...values: unknown[]) => ({
+          first: async <T = Record<string, unknown>>() => {
+            if (db) {
+              const stmt = db.prepare(query);
+              const row = stmt.get(...(values as Array<string | number | null>)) as T | undefined;
+              return row ?? null;
+            }
+            // Serialized D1 fallback for Node < 22 CI runners
+            const [id, uId, host, cfg, hint, salt, countUserId, cap] = values as [string, string, string, string, string, number, string, number];
+            const nowMs = Date.now();
+            const activeCount = fallbackRows.filter(r => {
+              if (r.userId !== countUserId || r.isRevoked !== 0) return false;
+              let ttl = 0.25;
+              try { ttl = JSON.parse(r.config).ttlHours || 0.25; } catch { ttl = 0.25; }
+              return new Date(r.createdAt).getTime() + ttl * 3600 * 1000 > nowMs;
+            }).length;
+            if (activeCount >= cap) return null;
+            const createdAt = new Date(nowMs).toISOString().replace('Z', '+00:00');
+            fallbackRows.push({ id, userId: uId, targetHost: host, config: cfg, tokenHint: hint, isRevoked: 0, issuedWithSalt: salt, createdAt });
+            return { id, createdAt } as unknown as T;
+          }
+        })
+      })
+    };
+
+    // Simulate cross-PoP concurrent mint attempts where later request gets lexicographically smaller UUID
+    const uuidSpy = vi
+      .spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('ffffffff-0000-4000-8000-000000000001' as `${string}-${string}-${string}-${string}-${string}`)
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000002' as `${string}-${string}-${string}-${string}-${string}`)
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000003' as `${string}-${string}-${string}-${string}-${string}`);
+
+    try {
+      const results = await Promise.all([
+        mintTokenWithCap({
+          d1: d1Adapter,
+          prisma: {} as any,
+          userId: 'u1',
+          targetHost: '1.1.1.1',
+          config: JSON.stringify({ ttlHours: 1 }),
+          issuedWithSalt: 0,
+          maxActiveWindowStart: new Date(Date.now() - 10000), // skewed Isolate window
+          signJwt: async (id) => `jwt.${id}.sig1`
+        }),
+        mintTokenWithCap({
+          d1: d1Adapter,
+          prisma: {} as any,
+          userId: 'u1',
+          targetHost: '1.1.1.1',
+          config: JSON.stringify({ ttlHours: 1 }),
+          issuedWithSalt: 0,
+          maxActiveWindowStart: new Date(Date.now() - 90000), // earlier skewed Isolate clock
+          signJwt: async (id) => `jwt.${id}.sig2`
+        }),
+        mintTokenWithCap({
+          d1: d1Adapter,
+          prisma: {} as any,
+          userId: 'u1',
+          targetHost: '1.1.1.1',
+          config: JSON.stringify({ ttlHours: 1 }),
+          issuedWithSalt: 0,
+          maxActiveWindowStart: new Date(Date.now() - 50000),
+          signJwt: async (id) => `jwt.${id}.sig3`
+        })
+      ]);
+
+      const succeeded = results.filter(r => r.created);
+      const rejected = results.filter(r => !r.created);
+      expect(succeeded.length).toBe(1);
+      expect(rejected.length).toBe(2);
+
+      // Total active (unrevoked, unexpired) tokens must strictly equal 5 (4 seed + 1 minted)
+      if (db) {
+        const countRow = db
+          .prepare(`SELECT COUNT(*) as cnt FROM "Token" WHERE "userId" = 'u1' AND "isRevoked" = 0 AND "id" NOT IN ('cm_expired', 'cm_corrupt_old')`)
+          .get() as { cnt: number };
+        expect(countRow.cnt).toBe(5);
+      } else {
+        const cnt = fallbackRows.filter(r => r.userId === 'u1' && r.isRevoked === 0 && !['cm_expired', 'cm_corrupt_old'].includes(r.id)).length;
+        expect(cnt).toBe(5);
+      }
+    } finally {
+      uuidSpy.mockRestore();
+      db?.close();
     }
   });
 });

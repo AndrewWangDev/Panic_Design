@@ -5,6 +5,13 @@ import { checkAndUpdateQuota, refundQuota } from '@/lib/quota';
 import { SignJWT } from 'jose';
 import { isPrivateIp, isValidTargetHost, parseTargetHost, resolveGeoCoordinates, resolveHostIps, validateSameOrigin } from '@/lib/security';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import {
+  countActiveTokens,
+  D1DatabaseLike,
+  mintTokenWithCap,
+  missingChaosJwtSecretResponse,
+  requireChaosJwtSecret
+} from '@/lib/tokenMinting';
 
 const ALLOWED_FAULTS = new Set(['502', '504', '429', '444', 'latency']);
 const ALLOWED_SCOPES = new Set(['Global', 'Cloud ASNs', 'Cellular', 'Cross-Region', 'Bots Only']);
@@ -24,7 +31,8 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    userId = session.user.id;
+    const authedUserId = session.user.id;
+    userId = authedUserId;
 
     const prisma = getPrisma();
 
@@ -110,20 +118,11 @@ export async function POST(req: Request) {
       if (!isValid) return NextResponse.json({ error: 'Security verification failed' }, { status: 403 });
     }
 
-    // Pre-check signing secret before deducting quota or writing to DB (SEC-03-EXT)
+    // Pre-check dedicated signing secret across all environments before deducting quota or writing to DB (SEC-03-EXT)
     const { env } = getCloudflareContext();
-    const isProd = process.env.NODE_ENV === 'production';
-    const chaosSecret = (env as any)?.CHAOS_JWT_SECRET || process.env.CHAOS_JWT_SECRET;
-    if (!chaosSecret) {
-      if (isProd) {
-        console.error('[SECURITY FATAL] Dedicated CHAOS_JWT_SECRET is missing in production. Token signing refused (SEC-03-EXT).');
-        return NextResponse.json({ error: 'Server misconfiguration: CHAOS_JWT_SECRET required in production' }, { status: 500 });
-      }
-    }
-    const authSecret = chaosSecret || (env as any)?.AUTH_SECRET || process.env.AUTH_SECRET;
+    const authSecret = requireChaosJwtSecret(env);
     if (!authSecret) {
-      console.error('Missing CHAOS_JWT_SECRET or AUTH_SECRET in environment');
-      return NextResponse.json({ error: 'Server misconfiguration: missing signing secret' }, { status: 500 });
+      return missingChaosJwtSecretResponse();
     }
 
     // Pre-flight DNS (A + AAAA) SSRF check before quota deduction or token creation (PD-SEC-02)
@@ -166,37 +165,7 @@ export async function POST(req: Request) {
     quotaDeductedAt = new Date();
 
     // Check concurrent active tokens before creation (bounded by 7d max TTL window to prevent N+1 full table scan)
-    const maxActiveWindowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const unrevokedTokens = await prisma.token.findMany({
-      where: {
-        userId: session.user.id,
-        isRevoked: false,
-        createdAt: { gte: maxActiveWindowStart }
-      },
-      select: {
-        createdAt: true,
-        config: true
-      }
-    });
-
-    let activeCount = 0;
-    const nowMs = Date.now();
-    for (const t of unrevokedTokens) {
-      try {
-        const conf = JSON.parse(t.config);
-        const ttlHours = conf.ttlHours || conf.ttl || 0.25;
-        const expiresAtMs = new Date(t.createdAt).getTime() + (ttlHours * 60 * 60 * 1000);
-        if (expiresAtMs > nowMs) {
-          activeCount++;
-        }
-      } catch {
-        // Fall back to 0.25h default TTL from creation if config serialization is corrupted.
-        const expiresAtMs = new Date(t.createdAt).getTime() + (0.25 * 60 * 60 * 1000);
-        if (expiresAtMs > nowMs) {
-          activeCount++;
-        }
-      }
-    }
+    const { activeCount, windowStart: maxActiveWindowStart } = await countActiveTokens(prisma, session.user.id);
 
     if (activeCount >= 5) {
       if (quotaDeducted && userId) {
@@ -221,135 +190,59 @@ export async function POST(req: Request) {
       ttlHours
     });
 
-    // Create DB entry first to get the Token ID
-    const token = await prisma.token.create({
-      data: {
-        userId: session.user.id,
-        targetHost: cleanHost,
-        config,
-        tokenHint: '', // Will update later after signing
-        issuedWithSalt: user.jwtSalt
-      }
-    });
-
-    // Generate JWT using pre-checked authSecret
     const secret = new TextEncoder().encode(authSecret);
-    
-    // Convert ttlHours to seconds string for expiration
     const expSeconds = Math.floor(ttlHours * 3600);
 
-    const jwt = await new SignJWT({
-      tokenId: token.id,
-      targetHost: cleanHost,
-      scope,
-      fault,
-      latency: effLatency,
-      jitter: effJitter,
-      distribution,
-      packetLoss,
-      mutilationStrategy,
+    const mintResult = await mintTokenWithCap({
+      d1: (env as { DB?: D1DatabaseLike } | undefined)?.DB,
+      prisma,
       userId: session.user.id,
-      jwtSalt: user.jwtSalt,
+      targetHost: cleanHost,
+      config,
       issuedWithSalt: user.jwtSalt,
-      w3
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setIssuedAt()
-      .setExpirationTime(`${expSeconds}s`)
-      .sign(secret);
-
-    // Commit token hint to DB
-    const tokenHint = `eyJhbGci...${jwt.slice(-4)}`;
-    await prisma.token.update({
-      where: { id: token.id },
-      data: { tokenHint }
+      maxActiveWindowStart,
+      signJwt: (tokenId) =>
+        new SignJWT({
+          tokenId,
+          targetHost: cleanHost,
+          scope,
+          fault,
+          latency: effLatency,
+          jitter: effJitter,
+          distribution,
+          packetLoss,
+          mutilationStrategy,
+          userId: authedUserId,
+          jwtSalt: user.jwtSalt,
+          issuedWithSalt: user.jwtSalt,
+          w3
+        })
+          .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+          .setIssuedAt()
+          .setExpirationTime(`${expSeconds}s`)
+          .sign(secret)
     });
 
-    // Post-confirmation Gatekeeper Check: verify active count does not exceed limit (bounded by 7d window) (PD-CONC-01)
-    const postCheckTokens = await prisma.token.findMany({
-      where: {
-        userId: session.user.id,
-        isRevoked: false,
-        createdAt: { gte: maxActiveWindowStart }
-      },
-      select: {
-        id: true,
-        tokenHint: true,
-        createdAt: true,
-        config: true
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
-    });
-
-    interface ActiveTokenRecord {
-      id: string;
-      isConfirmed: boolean;
-      createdAtMs: number;
+    if (!mintResult.created) {
+      if (quotaDeducted && userId) {
+        try {
+          await refundQuota(userId, quotaDeductedAt);
+        } catch {}
+        quotaDeducted = false;
+      }
+      return NextResponse.json({
+        error: 'CONCURRENT_CAP_EXCEEDED',
+        message: 'Maximum limit of 5 concurrent active tokens reached.'
+      }, { status: 403 });
     }
 
-    const activeTokens: ActiveTokenRecord[] = [];
-    const postNowMs = Date.now();
-    for (const t of postCheckTokens) {
-      let ttlH = 0.25;
-      try {
-        const conf = JSON.parse(t.config);
-        ttlH = conf.ttlHours || conf.ttl || 0.25;
-      } catch {
-        ttlH = 0.25;
-      }
-      const expMs = new Date(t.createdAt).getTime() + (ttlH * 60 * 60 * 1000);
-      if (expMs > postNowMs) {
-        activeTokens.push({
-          id: t.id,
-          isConfirmed: Boolean(t.tokenHint && t.tokenHint !== ''),
-          createdAtMs: new Date(t.createdAt).getTime()
-        });
-      }
-    }
-
-    if (activeTokens.length > 5) {
-      // Deterministic prioritization:
-      // 1. Confirmed tokens (tokenHint !== '') take absolute priority over pending unconfirmed tokens (tokenHint === '').
-      // 2. Earlier createdAtMs first.
-      // 3. Smaller id first (deterministic tie-breaker).
-      activeTokens.sort((a, b) => {
-        if (a.isConfirmed !== b.isConfirmed) {
-          return a.isConfirmed ? -1 : 1;
-        }
-        if (a.createdAtMs !== b.createdAtMs) {
-          return a.createdAtMs - b.createdAtMs;
-        }
-        return a.id.localeCompare(b.id);
-      });
-
-      const allowedSlotIds = new Set(activeTokens.slice(0, 5).map(t => t.id));
-      if (!allowedSlotIds.has(token.id)) {
-        // Current token did not secure one of the top 5 active slots.
-        // Self-revoke ONLY this token to eliminate PD-NEW-01 silent revocation regression.
-        await prisma.token.update({
-          where: { id: token.id },
-          data: { isRevoked: true }
-        }).catch(() => {});
-
-        if (quotaDeducted && userId) {
-          try {
-            await refundQuota(userId, quotaDeductedAt);
-          } catch {}
-          quotaDeducted = false;
-        }
-
-        return NextResponse.json({
-          error: 'CONCURRENT_CAP_EXCEEDED',
-          message: 'Maximum limit of 5 concurrent active tokens reached.'
-        }, { status: 403 });
-      }
-    }
+    const { jwt, tokenHint, token } = mintResult;
 
     // Record Audit Log for Token Minting (PD-BUG-04)
     if (prisma.chaosLog && typeof prisma.chaosLog.create === 'function') {
       await prisma.chaosLog.create({
         data: {
-          userId: session.user.id,
+          userId: authedUserId,
           targetUrl: `https://${cleanHost}`,
           injectedFault: 'TOKEN_MINTED',
           source: 'WEB_DASHBOARD',

@@ -45,12 +45,14 @@ vi.mock('@/lib/prisma', () => ({
   })
 }));
 
+const mockAgentCfEnv: Record<string, unknown> = {
+  AUTH_SECRET: 'test-secret-at-least-32-chars-long-for-jwt',
+  CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars-long-for-jwt'
+};
+
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: () => ({
-    env: {
-      AUTH_SECRET: 'test-secret-at-least-32-chars-long-for-jwt',
-      CHAOS_JWT_SECRET: 'test-chaos-jwt-secret-at-least-32-chars-long-for-jwt'
-    }
+    env: mockAgentCfEnv
   })
 }));
 
@@ -409,5 +411,33 @@ describe('Agent M2M Tokens Endpoint (POST & DELETE /api/v1/chaos/tokens)', () =>
     const statuses = responses.map(r => r.status);
     const successful = statuses.filter(s => s === 200).length;
     expect(successful).toBe(2);
+  });
+
+  it('strictly refuses missing CHAOS_JWT_SECRET in non-production environments on POST /api/v1/chaos/tokens', async () => {
+    const prevEnv = process.env.NODE_ENV;
+    const prevSecret = process.env.CHAOS_JWT_SECRET;
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+    delete process.env.CHAOS_JWT_SECRET;
+    delete mockAgentCfEnv.CHAOS_JWT_SECRET;
+
+    try {
+      const { POST } = await import('../src/app/api/v1/chaos/tokens/route');
+      const res = await POST(new Request('https://panic.andrewwangdev.com/api/v1/chaos/tokens', {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer pd_live_test',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ targetHost: 'example.com', fault: '502' })
+      }));
+
+      expect(res.status).toBe(500);
+      expect(mockCheckAndUpdateQuota).not.toHaveBeenCalled();
+      expect(mockTokenCreate).not.toHaveBeenCalled();
+    } finally {
+      mockAgentCfEnv.CHAOS_JWT_SECRET = 'test-chaos-jwt-secret-at-least-32-chars-long-for-jwt';
+      if (prevSecret !== undefined) process.env.CHAOS_JWT_SECRET = prevSecret;
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    }
   });
 });
